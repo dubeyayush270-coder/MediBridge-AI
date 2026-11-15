@@ -18,9 +18,16 @@ import {
 interface QuickActionsProps {
   activeProfile: CareProfile | null;
   onOpenCreateProfile: () => void;
+  onOpenAddMedication?: () => void;
+  onOpenAddAppointment?: () => void;
 }
 
-export function QuickActions({ activeProfile, onOpenCreateProfile }: QuickActionsProps) {
+export function QuickActions({
+  activeProfile,
+  onOpenCreateProfile,
+  onOpenAddMedication,
+  onOpenAddAppointment,
+}: QuickActionsProps) {
   const [emergencyModalOpen, setEmergencyModalOpen] = useState(false);
 
   const handlePrint = () => {
@@ -43,6 +50,38 @@ export function QuickActions({ activeProfile, onOpenCreateProfile }: QuickAction
         </CardHeader>
 
         <CardContent className="pt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Add Medication */}
+          {onOpenAddMedication && (
+            <button
+              onClick={onOpenAddMedication}
+              className="p-4 rounded-2xl bg-teal-50 border-2 border-teal-200 hover:bg-teal-100 hover:border-teal-400 text-teal-950 font-bold flex items-center gap-3 transition group text-left"
+            >
+              <div className="p-2.5 bg-teal-700 text-white rounded-xl group-hover:scale-105 transition-transform">
+                <Pill className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="block text-base leading-tight">Add Medication</span>
+                <span className="text-xs text-teal-800 font-semibold">New prescription</span>
+              </div>
+            </button>
+          )}
+
+          {/* Schedule Consultation */}
+          {onOpenAddAppointment && (
+            <button
+              onClick={onOpenAddAppointment}
+              className="p-4 rounded-2xl bg-navy-50 border-2 border-navy-200 hover:bg-navy-100 hover:border-navy-400 text-navy-950 font-bold flex items-center gap-3 transition group text-left"
+            >
+              <div className="p-2.5 bg-navy-800 text-white rounded-xl group-hover:scale-105 transition-transform">
+                <CalendarPlus className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="block text-base leading-tight">Schedule Visit</span>
+                <span className="text-xs text-navy-600 font-semibold">Doctor consultation</span>
+              </div>
+            </button>
+          )}
+
           {/* Call Doctor */}
           {activeProfile?.primaryDoctor?.phone ? (
             <a

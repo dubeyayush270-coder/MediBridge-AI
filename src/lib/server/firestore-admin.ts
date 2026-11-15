@@ -216,8 +216,18 @@ export async function adminCreateCareProfile(
 
   await db.collection("careProfiles").doc(profileId).set(newProfile);
 
-  // 2. Create membership for the creator
+  // 2. Create membership for the creator (with full owner permissions on their created profile)
   const membershipId = `mem-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const creatorPermissions: Permission[] = Array.from(
+    new Set<Permission>([
+      ...ROLE_PERMISSIONS[creatorUser.role],
+      "manage_medications",
+      "manage_appointments",
+      "edit_profile",
+      "invite_members",
+      "view_members",
+    ])
+  );
   const newMembership: CareProfileMembership = {
     id: membershipId,
     profileId,
@@ -226,7 +236,7 @@ export async function adminCreateCareProfile(
     userName: creatorUser.displayName,
     role: creatorUser.role,
     relationshipToPatient: creatorUser.role === "elderly_patient" ? "Self" : "Primary Family Coordinator",
-    permissions: [...ROLE_PERMISSIONS[creatorUser.role]],
+    permissions: creatorPermissions,
     status: "active",
     joinedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -333,6 +343,13 @@ export async function adminVerifyProfileAccess(
   if (requiredPermission) {
     const permitted = hasPermission(membership.role, requiredPermission, membership.permissions);
     if (!permitted) {
+      // Check if user is the profile creator
+      const profileSnap = await db.collection("careProfiles").doc(profileId).get();
+      const profileCreator = profileSnap.exists ? profileSnap.data()?.createdBy : null;
+      if (profileCreator === userId) {
+        return { authorized: true, membership };
+      }
+
       return {
         authorized: false,
         error: `Forbidden: Your role (${membership.role}) lacks the required permission: ${requiredPermission}.`,
@@ -733,15 +750,30 @@ export async function adminLogAdherenceDose(
     dosage: string;
     scheduledTime: string;
     scheduledDate: string;
-    status: "taken" | "skipped";
+    status: "taken" | "skipped" | "missed" | "late";
     notes?: string;
   }
 ): Promise<MedicationAdherenceLog> {
   const db = getDb();
-  const logId = logData.id || `adh-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const cleanTime = (logData.scheduledTime || "0800").replace(/[^0-9]/g, "");
+  const deterministicId =
+    logData.id ||
+    `adh_${profileId}_${logData.medicationId}_${logData.scheduledDate}_${cleanTime}`;
+
+  // Check if a log already exists for this exact dose slot to prevent duplicate adherence entries
+  const existingSnap = await db
+    .collection("adherenceLogs")
+    .where("profileId", "==", profileId)
+    .where("medicationId", "==", logData.medicationId)
+    .where("scheduledDate", "==", logData.scheduledDate)
+    .where("scheduledTime", "==", logData.scheduledTime)
+    .limit(1)
+    .get();
+
+  const targetDocId = !existingSnap.empty ? existingSnap.docs[0].id : deterministicId;
 
   const log: MedicationAdherenceLog = {
-    id: logId,
+    id: targetDocId,
     profileId,
     medicationId: logData.medicationId,
     medicationName: logData.medicationName,
@@ -758,6 +790,6 @@ export async function adminLogAdherenceDose(
     notes: logData.notes,
   };
 
-  await db.collection("adherenceLogs").doc(logId).set(log, { merge: true });
+  await db.collection("adherenceLogs").doc(targetDocId).set(log, { merge: true });
   return log;
 }

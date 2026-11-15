@@ -1,6 +1,8 @@
 export type MedicationStatus = "active" | "paused" | "discontinued";
 
-export type AdherenceStatus = "pending" | "taken" | "skipped" | "late";
+export type MedicationFrequency = "daily" | "twice_daily" | "three_times_daily" | "weekly" | "as_needed";
+
+export type AdherenceStatus = "pending" | "taken" | "skipped" | "missed" | "late";
 
 export interface MedicationScheduleTime {
   time: string; // HH:mm format e.g. "08:00"

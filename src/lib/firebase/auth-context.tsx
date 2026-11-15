@@ -33,8 +33,13 @@ import {
   apiCreateProfile,
   apiJoinProfile,
   apiLogAdherenceDose,
+  apiSaveMedication,
+  apiDeleteMedication,
+  apiSaveAppointment,
+  apiDeleteAppointment,
   ApiError,
 } from "../api/api-client";
+import { getLocalDateString } from "../utils/adherence";
 
 interface AuthContextType {
   user: AppUser | null;
@@ -55,7 +60,24 @@ interface AuthContextType {
   switchProfile: (profileId: string) => Promise<void>;
   createProfile: (data: Partial<CareProfile>) => Promise<CareProfile>;
   joinProfileWithPasscode: (profileId: string, passcode: string) => Promise<{ success: boolean; error?: string }>;
-  logMedicationDose: (logId: string, status: "taken" | "skipped") => Promise<void>;
+  logMedicationDose: (
+    slotOrLogId: string,
+    status: "taken" | "skipped" | "missed",
+    details?: {
+      medicationId?: string;
+      medicationName?: string;
+      dosage?: string;
+      scheduledTime?: string;
+      scheduledDate?: string;
+      notes?: string;
+    }
+  ) => Promise<void>;
+  addMedication: (data: Partial<Medication>) => Promise<Medication>;
+  updateMedication: (id: string, data: Partial<Medication>) => Promise<Medication>;
+  deleteMedication: (id: string) => Promise<void>;
+  addAppointment: (data: Partial<Appointment>) => Promise<Appointment>;
+  updateAppointment: (id: string, data: Partial<Appointment>) => Promise<Appointment>;
+  deleteAppointment: (id: string) => Promise<void>;
   enterDemoMode: (role?: UserRole) => void;
   getIdToken: () => Promise<string | null>;
   refreshUserData: () => Promise<void>;
@@ -474,53 +496,243 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const logMedicationDose = async (logId: string, status: "taken" | "skipped") => {
-    const existingLog = adherenceLogs.find((l) => l.id === logId);
+  const logMedicationDose = async (
+    slotOrLogId: string,
+    status: "taken" | "skipped" | "missed",
+    details?: {
+      medicationId?: string;
+      medicationName?: string;
+      dosage?: string;
+      scheduledTime?: string;
+      scheduledDate?: string;
+      notes?: string;
+    }
+  ) => {
+    const today = getLocalDateString();
+    const scheduledDate = details?.scheduledDate || today;
+    const scheduledTime = details?.scheduledTime || "08:00";
+    const medId = details?.medicationId || slotOrLogId;
+    const matchedMed = medications.find((m) => m.id === medId);
+    const medName = details?.medicationName || matchedMed?.name || "Medication";
+    const dosage = details?.dosage || matchedMed?.dosage || "1 dose";
+    const nowIso = new Date().toISOString();
+
+    const loggedByInfo = user
+      ? {
+          userId: user.uid,
+          userName: user.displayName,
+          role: user.role,
+        }
+      : undefined;
 
     // Optimistic UI update
-    setAdherenceLogs((prev) =>
-      prev.map((log) => {
-        if (log.id === logId) {
-          return {
-            ...log,
-            status,
-            loggedAt: new Date().toISOString(),
-            loggedBy: user
-              ? {
-                  userId: user.uid,
-                  userName: user.displayName,
-                  role: user.role,
-                }
-              : undefined,
-          };
-        }
-        return log;
-      })
-    );
+    setAdherenceLogs((prev) => {
+      const existingIndex = prev.findIndex(
+        (l) =>
+          l.id === slotOrLogId ||
+          (l.medicationId === medId &&
+            l.scheduledDate === scheduledDate &&
+            l.scheduledTime === scheduledTime)
+      );
+
+      if (existingIndex >= 0) {
+        const updated = [...prev];
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          status,
+          loggedAt: nowIso,
+          loggedBy: loggedByInfo,
+          notes: details?.notes !== undefined ? details.notes : updated[existingIndex].notes,
+        };
+        return updated;
+      }
+
+      const newLog: MedicationAdherenceLog = {
+        id: slotOrLogId.startsWith("adh_")
+          ? slotOrLogId
+          : `adh_${activeProfile?.id || "demo"}_${medId}_${scheduledDate}_${scheduledTime.replace(/:/g, "")}`,
+        profileId: activeProfile?.id || "demo-profile-eleanor",
+        medicationId: medId,
+        medicationName: medName,
+        dosage,
+        scheduledTime,
+        scheduledDate,
+        status,
+        loggedAt: nowIso,
+        loggedBy: loggedByInfo,
+        notes: details?.notes,
+      };
+      return [...prev, newLog];
+    });
 
     // If real Firebase user, persist to protected server API
     if (!isDemoMode && isFirebaseReady && firebaseUser && activeProfile) {
       try {
         const token = await firebaseUser.getIdToken();
-        const medId = existingLog?.medicationId || logId;
-        const medName = existingLog?.medicationName || "Medication";
-        const dosage = existingLog?.dosage || "1 dose";
-        const scheduledTime = existingLog?.scheduledTime || "08:00";
-        const scheduledDate = existingLog?.scheduledDate || new Date().toISOString().split("T")[0];
-
-        await apiLogAdherenceDose(token, activeProfile.id, {
-          id: logId,
+        const res = await apiLogAdherenceDose(token, activeProfile.id, {
+          id: slotOrLogId,
           medicationId: medId,
           medicationName: medName,
           dosage,
           scheduledTime,
           scheduledDate,
           status,
+          notes: details?.notes,
         });
+
+        if (res.success && res.log) {
+          setAdherenceLogs((prev) => {
+            const idx = prev.findIndex((l) => l.id === res.log.id);
+            if (idx >= 0) {
+              const copy = [...prev];
+              copy[idx] = res.log;
+              return copy;
+            }
+            return [...prev, res.log];
+          });
+        }
       } catch (err) {
         console.error("[Auth] Failed to persist adherence dose to server API:", err);
       }
     }
+  };
+
+  const addMedication = async (data: Partial<Medication>): Promise<Medication> => {
+    if (!isDemoMode && isFirebaseReady && firebaseUser && activeProfile) {
+      const token = await firebaseUser.getIdToken();
+      const res = await apiSaveMedication(token, activeProfile.id, data);
+      setMedications((prev) => {
+        const idx = prev.findIndex((m) => m.id === res.medication.id);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = res.medication;
+          return copy;
+        }
+        return [...prev, res.medication];
+      });
+      return res.medication;
+    } else {
+      const newMed: Medication = {
+        id: data.id || `med-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        profileId: activeProfile?.id || DEMO_PROFILE.id,
+        name: data.name || "New Medication",
+        genericName: data.genericName,
+        dosage: data.dosage || "1 dose",
+        route: data.route || "oral",
+        frequency: data.frequency || "daily",
+        scheduleTimes: data.scheduleTimes || [{ time: "08:00", label: "morning" }],
+        withFood: Boolean(data.withFood),
+        specialInstructions: data.specialInstructions,
+        prescribingDoctor: data.prescribingDoctor,
+        prescribedFor: data.prescribedFor,
+        status: data.status || "active",
+        refillReminder: data.refillReminder || { enabled: false },
+        pillVisual: data.pillVisual,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setMedications((prev) => [...prev, newMed]);
+      return newMed;
+    }
+  };
+
+  const updateMedication = async (id: string, data: Partial<Medication>): Promise<Medication> => {
+    if (!isDemoMode && isFirebaseReady && firebaseUser && activeProfile) {
+      const token = await firebaseUser.getIdToken();
+      const res = await apiSaveMedication(token, activeProfile.id, { ...data, id });
+      setMedications((prev) => prev.map((m) => (m.id === id ? res.medication : m)));
+      return res.medication;
+    } else {
+      let updated: Medication | undefined;
+      setMedications((prev) =>
+        prev.map((m) => {
+          if (m.id === id) {
+            updated = { ...m, ...data, updatedAt: new Date().toISOString() };
+            return updated;
+          }
+          return m;
+        })
+      );
+      return updated || (data as Medication);
+    }
+  };
+
+  const deleteMedication = async (id: string): Promise<void> => {
+    if (!isDemoMode && isFirebaseReady && firebaseUser && activeProfile) {
+      const token = await firebaseUser.getIdToken();
+      await apiDeleteMedication(token, activeProfile.id, id);
+    }
+    setMedications((prev) => prev.filter((m) => m.id !== id));
+  };
+
+  const addAppointment = async (data: Partial<Appointment>): Promise<Appointment> => {
+    if (!isDemoMode && isFirebaseReady && firebaseUser && activeProfile) {
+      const token = await firebaseUser.getIdToken();
+      const res = await apiSaveAppointment(token, activeProfile.id, data);
+      setAppointments((prev) => {
+        const idx = prev.findIndex((a) => a.id === res.appointment.id);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = res.appointment;
+          return copy;
+        }
+        return [...prev, res.appointment];
+      });
+      return res.appointment;
+    } else {
+      const newApt: Appointment = {
+        id: data.id || `apt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        profileId: activeProfile?.id || DEMO_PROFILE.id,
+        title: data.title || "Doctor Consultation",
+        doctorName: data.doctorName || "Physician",
+        specialty: data.specialty || "General Practice",
+        clinicName: data.clinicName || "Medical Clinic",
+        address: data.address || "",
+        phone: data.phone || "",
+        dateTime: data.dateTime || new Date().toISOString(),
+        durationMinutes: data.durationMinutes || 30,
+        status: data.status || "upcoming",
+        purpose: data.purpose || "Consultation",
+        questionsToAsk: data.questionsToAsk || [],
+        preparationNotes: data.preparationNotes,
+        transportAssistanceNeeded: Boolean(data.transportAssistanceNeeded),
+        assignedCompanion: data.assignedCompanion,
+        reminderSent: Boolean(data.reminderSent),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setAppointments((prev) => [...prev, newApt]);
+      return newApt;
+    }
+  };
+
+  const updateAppointment = async (id: string, data: Partial<Appointment>): Promise<Appointment> => {
+    if (!isDemoMode && isFirebaseReady && firebaseUser && activeProfile) {
+      const token = await firebaseUser.getIdToken();
+      const res = await apiSaveAppointment(token, activeProfile.id, { ...data, id });
+      setAppointments((prev) => prev.map((a) => (a.id === id ? res.appointment : a)));
+      return res.appointment;
+    } else {
+      let updated: Appointment | undefined;
+      setAppointments((prev) =>
+        prev.map((a) => {
+          if (a.id === id) {
+            updated = { ...a, ...data, updatedAt: new Date().toISOString() };
+            return updated;
+          }
+          return a;
+        })
+      );
+      return updated || (data as Appointment);
+    }
+  };
+
+  const deleteAppointment = async (id: string): Promise<void> => {
+    if (!isDemoMode && isFirebaseReady && firebaseUser && activeProfile) {
+      const token = await firebaseUser.getIdToken();
+      await apiDeleteAppointment(token, activeProfile.id, id);
+    }
+    setAppointments((prev) => prev.filter((a) => a.id !== id));
   };
 
   const getIdToken = async (): Promise<string | null> => {
@@ -562,6 +774,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         createProfile,
         joinProfileWithPasscode,
         logMedicationDose,
+        addMedication,
+        updateMedication,
+        deleteMedication,
+        addAppointment,
+        updateAppointment,
+        deleteAppointment,
         enterDemoMode,
         getIdToken,
         refreshUserData,

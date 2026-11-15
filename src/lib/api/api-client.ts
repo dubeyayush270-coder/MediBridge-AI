@@ -166,7 +166,7 @@ export async function apiLogAdherenceDose(
     dosage: string;
     scheduledTime: string;
     scheduledDate: string;
-    status: "taken" | "skipped";
+    status: "taken" | "skipped" | "missed" | "late";
     notes?: string;
   }
 ): Promise<{ success: boolean; log: MedicationAdherenceLog }> {
@@ -176,6 +176,64 @@ export async function apiLogAdherenceDose(
     {
       method: "POST",
       body: JSON.stringify(logData),
+    }
+  );
+}
+
+export async function apiSaveMedication(
+  token: string,
+  profileId: string,
+  data: Partial<Medication>
+): Promise<{ success: boolean; medication: Medication }> {
+  return request<{ success: boolean; medication: Medication }>(
+    `/api/profiles/${encodeURIComponent(profileId)}/medications`,
+    token,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function apiDeleteMedication(
+  token: string,
+  profileId: string,
+  medicationId: string
+): Promise<{ success: boolean; deleted: boolean }> {
+  return request<{ success: boolean; deleted: boolean }>(
+    `/api/profiles/${encodeURIComponent(profileId)}/medications/${encodeURIComponent(medicationId)}`,
+    token,
+    {
+      method: "DELETE",
+    }
+  );
+}
+
+export async function apiSaveAppointment(
+  token: string,
+  profileId: string,
+  data: Partial<Appointment>
+): Promise<{ success: boolean; appointment: Appointment }> {
+  return request<{ success: boolean; appointment: Appointment }>(
+    `/api/profiles/${encodeURIComponent(profileId)}/appointments`,
+    token,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function apiDeleteAppointment(
+  token: string,
+  profileId: string,
+  appointmentId: string
+): Promise<{ success: boolean; deleted: boolean }> {
+  return request<{ success: boolean; deleted: boolean }>(
+    `/api/profiles/${encodeURIComponent(profileId)}/appointments/${encodeURIComponent(appointmentId)}`,
+    token,
+    {
+      method: "DELETE",
     }
   );
 }

@@ -45,6 +45,11 @@ declare module "lucide-react" {
   export const Check: any;
   export const Plus: any;
   export const Database: any;
+  export const Pencil: any;
+  export const Trash: any;
+  export const Trash2: any;
+  export const Edit2: any;
+  export const Flame: any;
   const anyIcon: any;
   export default anyIcon;
 }

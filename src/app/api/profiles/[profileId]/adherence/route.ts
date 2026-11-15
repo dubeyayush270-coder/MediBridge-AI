@@ -75,7 +75,7 @@ export async function POST(
     const body = await req.json();
     if (!body.medicationId || !body.status) {
       return NextResponse.json(
-        { error: "medicationId and status ('taken' | 'skipped') are required." },
+        { error: "medicationId and status ('taken' | 'skipped' | 'missed') are required." },
         { status: 400 }
       );
     }

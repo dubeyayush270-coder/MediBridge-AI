@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Medication, MedicationAdherenceLog } from "@/lib/types/medication";
 import { formatElderTime } from "@/lib/utils";
+import { generateTodaySchedule } from "@/lib/utils/adherence";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,54 +14,113 @@ import {
   AlertCircle,
   Utensils,
   XCircle,
+  Plus,
   HelpCircle,
+  AlertTriangle,
 } from "lucide-react";
 
 interface TodayMedicationsProps {
   medications: Medication[];
   adherenceLogs: MedicationAdherenceLog[];
-  onLogDose: (logId: string, status: "taken" | "skipped") => void;
+  onLogDose: (
+    slotOrLogId: string,
+    status: "taken" | "skipped" | "missed",
+    details?: {
+      medicationId?: string;
+      medicationName?: string;
+      dosage?: string;
+      scheduledTime?: string;
+      scheduledDate?: string;
+      notes?: string;
+    }
+  ) => void;
+  onAddMedication?: () => void;
+  canManageMedications?: boolean;
 }
 
 export function TodayMedications({
   medications,
   adherenceLogs,
   onLogDose,
+  onAddMedication,
+  canManageMedications = false,
 }: TodayMedicationsProps) {
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
-  const handleMarkTaken = (logId: string, medName: string) => {
-    onLogDose(logId, "taken");
-    setSuccessToast(`Great job! Marked ${medName} as taken.`);
+  // Compute timezone-aware today schedule dynamically from prescriptions
+  const todayDoses: MedicationAdherenceLog[] = generateTodaySchedule(medications, adherenceLogs);
+  const takenCount = todayDoses.filter((d) => d.status === "taken").length;
+  const totalCount = todayDoses.length;
+
+  const handleMarkTaken = (dose: MedicationAdherenceLog) => {
+    onLogDose(dose.id, "taken", {
+      medicationId: dose.medicationId,
+      medicationName: dose.medicationName,
+      dosage: dose.dosage,
+      scheduledTime: dose.scheduledTime,
+      scheduledDate: dose.scheduledDate,
+    });
+    setSuccessToast(`Great job! Marked ${dose.medicationName} as taken.`);
     setTimeout(() => setSuccessToast(null), 4000);
   };
 
-  const handleMarkSkipped = (logId: string, medName: string) => {
-    onLogDose(logId, "skipped");
-    setSuccessToast(`Recorded that you skipped ${medName}. Notified your care team.`);
+  const handleMarkSkipped = (dose: MedicationAdherenceLog) => {
+    onLogDose(dose.id, "skipped", {
+      medicationId: dose.medicationId,
+      medicationName: dose.medicationName,
+      dosage: dose.dosage,
+      scheduledTime: dose.scheduledTime,
+      scheduledDate: dose.scheduledDate,
+    });
+    setSuccessToast(`Recorded that you skipped ${dose.medicationName}. Notified your care circle.`);
+    setTimeout(() => setSuccessToast(null), 4000);
+  };
+
+  const handleMarkMissed = (dose: MedicationAdherenceLog) => {
+    onLogDose(dose.id, "missed", {
+      medicationId: dose.medicationId,
+      medicationName: dose.medicationName,
+      dosage: dose.dosage,
+      scheduledTime: dose.scheduledTime,
+      scheduledDate: dose.scheduledDate,
+    });
+    setSuccessToast(`Marked ${dose.medicationName} as missed.`);
     setTimeout(() => setSuccessToast(null), 4000);
   };
 
   return (
     <Card className="border-2 border-navy-100 shadow-md">
-      <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-navy-100">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-teal-100 text-teal-800 rounded-xl">
-              <Pill className="w-6 h-6" />
-            </div>
-            <div>
-              <CardTitle className="text-2xl text-navy-900">Today's Medications</CardTitle>
-              <CardDescription className="text-base text-navy-600">
-                Prescribed doses scheduled for today
-              </CardDescription>
-            </div>
+      <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-navy-100 gap-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-teal-100 text-teal-800 rounded-2xl shrink-0">
+            <Pill className="w-7 h-7" />
+          </div>
+          <div>
+            <CardTitle className="text-2xl text-navy-900">Today's Medications</CardTitle>
+            <CardDescription className="text-base text-navy-600">
+              Prescribed daily doses with 1-tap adherence tracking
+            </CardDescription>
           </div>
         </div>
-        <div className="mt-3 sm:mt-0 flex items-center gap-2">
-          <Badge variant="teal" size="md">
-            {adherenceLogs.filter((l) => l.status === "taken").length} of {adherenceLogs.length} Taken
-          </Badge>
+
+        <div className="flex items-center gap-2">
+          {totalCount > 0 && (
+            <Badge variant="teal" size="md" className="text-sm font-bold px-3 py-1">
+              {takenCount} of {totalCount} Taken
+            </Badge>
+          )}
+
+          {canManageMedications && onAddMedication && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onAddMedication}
+              className="border-teal-600 text-teal-800 hover:bg-teal-50 font-bold flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4 text-teal-700" />
+              <span>Add Medication</span>
+            </Button>
+          )}
         </div>
       </CardHeader>
 
@@ -75,30 +135,45 @@ export function TodayMedications({
           </div>
         )}
 
-        {adherenceLogs.length === 0 ? (
-          <div className="text-center py-10 px-4 bg-stone-50 rounded-2xl border border-dashed border-stone-300">
-            <Pill className="w-12 h-12 text-stone-400 mx-auto mb-3" />
-            <p className="text-lg font-bold text-navy-900">No medications scheduled for today</p>
-            <p className="text-sm text-navy-600 mt-1">
-              Add medications to your regimen to track them here.
+        {totalCount === 0 ? (
+          <div className="text-center py-12 px-4 bg-stone-50 rounded-2xl border-2 border-dashed border-stone-300">
+            <div className="w-16 h-16 bg-stone-100 text-stone-400 rounded-3xl mx-auto flex items-center justify-center mb-3">
+              <Pill className="w-8 h-8" />
+            </div>
+            <p className="text-xl font-black text-navy-900">No Medications Scheduled Today</p>
+            <p className="text-base text-navy-600 mt-1 max-w-md mx-auto">
+              Add your prescribed medications to start tracking daily doses, meal timings, and refill alerts.
             </p>
+            {onAddMedication && (
+              <Button
+                variant="primary"
+                size="md"
+                onClick={onAddMedication}
+                className="mt-4 bg-teal-700 hover:bg-teal-800 text-white font-bold"
+              >
+                Add First Medication
+              </Button>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
-            {adherenceLogs.map((log) => {
-              const med = medications.find((m) => m.id === log.medicationId);
-              const isTaken = log.status === "taken";
-              const isSkipped = log.status === "skipped";
-              const isPending = log.status === "pending";
+            {todayDoses.map((dose) => {
+              const med = medications.find((m) => m.id === dose.medicationId);
+              const isTaken = dose.status === "taken";
+              const isSkipped = dose.status === "skipped";
+              const isMissed = dose.status === "missed";
+              const isPending = dose.status === "pending";
 
               return (
                 <div
-                  key={log.id}
+                  key={dose.id}
                   className={`p-5 rounded-2xl border-2 transition-all ${
                     isTaken
-                      ? "bg-emerald-50/60 border-emerald-200"
+                      ? "bg-emerald-50/70 border-emerald-300"
                       : isSkipped
-                      ? "bg-stone-100 border-stone-300 opacity-75"
+                      ? "bg-stone-100 border-stone-300 opacity-80"
+                      : isMissed
+                      ? "bg-amber-50/80 border-amber-300"
                       : "bg-white border-teal-200 shadow-sm hover:border-teal-400"
                   }`}
                 >
@@ -106,14 +181,22 @@ export function TodayMedications({
                     {/* Medication Details */}
                     <div className="flex items-start gap-4">
                       <div
-                        className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 border ${
+                        className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 border-2 ${
                           isTaken
                             ? "bg-emerald-600 text-white border-emerald-700"
+                            : isMissed
+                            ? "bg-amber-500 text-white border-amber-600"
+                            : isSkipped
+                            ? "bg-stone-200 text-stone-600 border-stone-300"
                             : "bg-teal-50 text-teal-800 border-teal-200"
                         }`}
                       >
                         {isTaken ? (
                           <CheckCircle2 className="w-8 h-8" />
+                        ) : isMissed ? (
+                          <AlertTriangle className="w-8 h-8" />
+                        ) : isSkipped ? (
+                          <XCircle className="w-8 h-8" />
                         ) : (
                           <Pill className="w-7 h-7" />
                         )}
@@ -122,13 +205,13 @@ export function TodayMedications({
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <h4 className="text-xl sm:text-2xl font-black text-navy-900">
-                            {log.medicationName}
+                            {dose.medicationName}
                           </h4>
                           <span className="text-base font-bold text-teal-800 bg-teal-100/70 px-2.5 py-0.5 rounded-lg border border-teal-200">
-                            {log.dosage}
+                            {dose.dosage}
                           </span>
                           {med?.pillVisual?.color && (
-                            <span className="text-xs font-semibold text-navy-600 bg-navy-50 px-2 py-0.5 rounded-md border border-navy-200">
+                            <span className="text-xs font-semibold text-navy-700 bg-navy-50 px-2.5 py-0.5 rounded-md border border-navy-200">
                               Appearance: {med.pillVisual.color} {med.pillVisual.shape}
                             </span>
                           )}
@@ -138,67 +221,80 @@ export function TodayMedications({
                         <div className="flex flex-wrap items-center gap-3 text-sm text-navy-700 pt-1">
                           <span className="flex items-center gap-1.5 font-bold text-navy-900">
                             <Clock className="w-4 h-4 text-teal-700" />
-                            Scheduled: {formatElderTime(log.scheduledTime)}
+                            Scheduled: {formatElderTime(dose.scheduledTime)}
                           </span>
 
-                          {med?.withFood !== undefined && (
-                            <span className="flex items-center gap-1 text-navy-600">
-                              <Utensils className="w-4 h-4 text-amber-700" />
-                              {med.withFood ? "Take with meal / food" : "Can take on empty stomach"}
-                            </span>
-                          )}
+                          <span className="flex items-center gap-1 text-navy-600">
+                            <Utensils className="w-4 h-4 text-amber-700" />
+                            {med?.withFood ? "Take with meal / food" : "Can take on empty stomach"}
+                          </span>
                         </div>
 
                         {med?.specialInstructions && (
-                          <p className="text-sm text-navy-800 bg-amber-50/80 p-2 rounded-lg border border-amber-200/60 font-medium">
+                          <p className="text-sm text-navy-800 bg-amber-50/80 p-2.5 rounded-xl border border-amber-200/60 font-medium">
                             <strong>Note:</strong> {med.specialInstructions}
                           </p>
                         )}
 
-                        {log.loggedAt && (
-                          <p className="text-xs text-navy-500 italic">
-                            Logged at {formatElderTime(new Date(log.loggedAt))}
-                            {log.loggedBy ? ` by ${log.loggedBy.userName}` : ""}
+                        {dose.loggedAt && (
+                          <p className="text-xs text-navy-500 italic pt-0.5">
+                            Logged at {formatElderTime(new Date(dose.loggedAt))}
+                            {dose.loggedBy
+                              ? ` by ${dose.loggedBy.userName}`
+                              : ""}
                           </p>
                         )}
                       </div>
                     </div>
 
-                    {/* Actions & Status */}
+                    {/* Actions & Status Buttons (Elder-Friendly 56px+ Targets) */}
                     <div className="flex items-center gap-3 shrink-0 self-end lg:self-center">
                       {isTaken ? (
                         <div className="flex items-center gap-2">
-                          <Badge variant="success" size="lg" className="px-4 py-2 text-base">
+                          <Badge variant="success" size="lg" className="px-4 py-2 text-base font-bold">
                             <CheckCircle2 className="w-5 h-5 text-emerald-700" />
                             <span>Taken</span>
                           </Badge>
                           <button
-                            onClick={() => onLogDose(log.id, "skipped")}
-                            className="text-xs text-navy-500 hover:text-navy-800 underline p-1"
+                            onClick={() => handleMarkSkipped(dose)}
+                            className="text-xs text-navy-500 hover:text-navy-800 underline p-1 font-semibold"
                           >
-                            Change
+                            Change to Skipped
                           </button>
                         </div>
                       ) : isSkipped ? (
                         <div className="flex items-center gap-2">
-                          <Badge variant="neutral" size="lg" className="px-4 py-2 text-base">
+                          <Badge variant="neutral" size="lg" className="px-4 py-2 text-base font-bold">
                             <XCircle className="w-5 h-5 text-stone-600" />
                             <span>Skipped</span>
                           </Badge>
                           <button
-                            onClick={() => onLogDose(log.id, "taken")}
-                            className="text-xs text-teal-700 hover:text-teal-900 underline font-semibold p-1"
+                            onClick={() => handleMarkTaken(dose)}
+                            className="text-xs text-teal-700 hover:text-teal-900 underline font-bold p-1"
                           >
-                            Mark Taken
+                            Change to Taken
+                          </button>
+                        </div>
+                      ) : isMissed ? (
+                        <div className="flex items-center gap-2">
+                          <Badge variant="warning" size="lg" className="px-4 py-2 text-base font-bold">
+                            <AlertTriangle className="w-5 h-5 text-amber-700" />
+                            <span>Missed</span>
+                          </Badge>
+                          <button
+                            onClick={() => handleMarkTaken(dose)}
+                            className="text-xs text-teal-700 hover:text-teal-900 underline font-bold p-1"
+                          >
+                            Mark as Taken
                           </button>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
                           <Button
                             variant="primary"
                             size="lg"
-                            onClick={() => handleMarkTaken(log.id, log.medicationName)}
-                            className="bg-teal-700 hover:bg-teal-800 text-white font-bold text-lg px-6 py-3 min-h-[52px] shadow-md flex items-center gap-2"
+                            onClick={() => handleMarkTaken(dose)}
+                            className="bg-teal-700 hover:bg-teal-800 text-white font-bold text-lg px-6 py-3 min-h-[56px] shadow-md flex items-center gap-2"
                           >
                             <CheckCircle2 className="w-6 h-6" />
                             <span>I Took This</span>
@@ -206,10 +302,18 @@ export function TodayMedications({
                           <Button
                             variant="outline"
                             size="md"
-                            onClick={() => handleMarkSkipped(log.id, log.medicationName)}
-                            className="border-navy-300 text-navy-700 hover:bg-navy-50 text-sm font-semibold min-h-[52px]"
+                            onClick={() => handleMarkSkipped(dose)}
+                            className="border-navy-300 text-navy-700 hover:bg-navy-50 text-sm font-semibold min-h-[56px] px-4"
                           >
                             Skip
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="md"
+                            onClick={() => handleMarkMissed(dose)}
+                            className="border-amber-300 text-amber-800 hover:bg-amber-50 text-xs font-semibold min-h-[56px] px-3"
+                          >
+                            Missed
                           </Button>
                         </div>
                       )}

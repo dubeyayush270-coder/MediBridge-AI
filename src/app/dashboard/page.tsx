@@ -10,6 +10,8 @@ import { CaregiverTeam } from "@/components/dashboard/caregiver-team";
 import { QuickActions } from "@/components/dashboard/quick-actions";
 import { CreateProfileModal } from "@/components/dashboard/create-profile-modal";
 import { PasscodeModal } from "@/components/dashboard/passcode-modal";
+import { MedicationModal } from "@/components/dashboard/medication-modal";
+import { AppointmentModal } from "@/components/dashboard/appointment-modal";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Heart, Plus, Key, Sparkles, UserPlus } from "lucide-react";
@@ -29,10 +31,31 @@ export default function DashboardPage() {
     createProfile,
     joinProfileWithPasscode,
     logMedicationDose,
+    addMedication,
+    addAppointment,
   } = useAuth();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [passcodeModalOpen, setPasscodeModalOpen] = useState(false);
+  const [medicationModalOpen, setMedicationModalOpen] = useState(false);
+  const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
+
+  // Check RBAC permissions for active profile
+  const currentMembership = memberships.find(
+    (m) => m.userId === user?.uid && m.profileId === activeProfile?.id
+  );
+  const isCreator = activeProfile?.createdBy === user?.uid;
+  const canManageMedications =
+    isDemoMode ||
+    isCreator ||
+    user?.role === "caregiver" ||
+    Boolean(currentMembership?.permissions.includes("manage_medications"));
+  const canManageAppointments =
+    isDemoMode ||
+    isCreator ||
+    user?.role === "caregiver" ||
+    user?.role === "family_member" ||
+    Boolean(currentMembership?.permissions.includes("manage_appointments"));
 
   // Loading state
   if (loading) {
@@ -131,16 +154,22 @@ export default function DashboardPage() {
             medications={medications}
             adherenceLogs={adherenceLogs}
             onLogDose={logMedicationDose}
+            onAddMedication={() => setMedicationModalOpen(true)}
+            canManageMedications={canManageMedications}
           />
 
           {/* Upcoming Appointments */}
-          <UpcomingAppointments appointments={appointments} />
+          <UpcomingAppointments
+            appointments={appointments}
+            onScheduleAppointment={() => setAppointmentModalOpen(true)}
+            canManageAppointments={canManageAppointments}
+          />
         </div>
 
         {/* Right 1 Column: Adherence, Caregivers, and Quick Actions */}
         <div className="space-y-8">
           {/* Medication Adherence Summary */}
-          <AdherenceSummary logs={adherenceLogs} />
+          <AdherenceSummary logs={adherenceLogs} medications={medications} />
 
           {/* Caregiver & Family Team */}
           <CaregiverTeam
@@ -153,6 +182,8 @@ export default function DashboardPage() {
           <QuickActions
             activeProfile={activeProfile}
             onOpenCreateProfile={() => setCreateModalOpen(true)}
+            onOpenAddMedication={canManageMedications ? () => setMedicationModalOpen(true) : undefined}
+            onOpenAddAppointment={canManageAppointments ? () => setAppointmentModalOpen(true) : undefined}
           />
         </div>
       </div>
@@ -170,6 +201,24 @@ export default function DashboardPage() {
         onClose={() => setPasscodeModalOpen(false)}
         activeProfile={activeProfile}
         onJoinWithPasscode={joinProfileWithPasscode}
+      />
+
+      {/* Add Medication Modal */}
+      <MedicationModal
+        isOpen={medicationModalOpen}
+        onClose={() => setMedicationModalOpen(false)}
+        onSave={async (data) => {
+          await addMedication(data);
+        }}
+      />
+
+      {/* Schedule Consultation Modal */}
+      <AppointmentModal
+        isOpen={appointmentModalOpen}
+        onClose={() => setAppointmentModalOpen(false)}
+        onSave={async (data) => {
+          await addAppointment(data);
+        }}
       />
     </div>
   );
