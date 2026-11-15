@@ -12,18 +12,20 @@ import { CreateProfileModal } from "@/components/dashboard/create-profile-modal"
 import { PasscodeModal } from "@/components/dashboard/passcode-modal";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Heart, Plus, Key, AlertCircle, ShieldAlert } from "lucide-react";
+import { Heart, Plus, Key, Sparkles, UserPlus } from "lucide-react";
 import Link from "next/link";
 
 export default function DashboardPage() {
   const {
     user,
     activeProfile,
+    allProfiles,
     memberships,
     medications,
     adherenceLogs,
     appointments,
     loading,
+    isDemoMode,
     createProfile,
     joinProfileWithPasscode,
     logMedicationDose,
@@ -78,6 +80,47 @@ export default function DashboardPage() {
         onOpenCreateProfile={() => setCreateModalOpen(true)}
         onOpenJoinPasscode={() => setPasscodeModalOpen(true)}
       />
+
+      {/* New User Welcome / Empty Care Profile Banner */}
+      {!activeProfile && !isDemoMode && (
+        <Card className="border-2 border-teal-300 bg-teal-50/80 p-6 sm:p-8">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-teal-100 text-teal-900 font-bold text-xs">
+                <Sparkles className="w-3.5 h-3.5 text-teal-700" />
+                <span>Account Ready</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-black text-navy-900">
+                Welcome to MediBridge AI, {user.displayName}!
+              </h2>
+              <p className="text-base text-navy-700 max-w-2xl font-medium">
+                You haven't set up or linked an elderly care profile yet. Create a new care profile for yourself or your loved one, or enter a family access passcode to join an existing care circle.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-3">
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={() => setCreateModalOpen(true)}
+                className="bg-teal-700 hover:bg-teal-800 text-white font-bold flex items-center gap-2"
+              >
+                <Plus className="w-5 h-5" />
+                <span>Create Care Profile</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={() => setPasscodeModalOpen(true)}
+                className="border-teal-700 text-teal-800 hover:bg-teal-100/60 font-bold flex items-center gap-2"
+              >
+                <Key className="w-5 h-5 text-teal-700" />
+                <span>Join with Passcode</span>
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Main Grid Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

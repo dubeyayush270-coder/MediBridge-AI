@@ -1,12 +1,12 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { AppUser, UserRole } from "../types/user";
 import { CareProfile } from "../types/care-profile";
 import { CareProfileMembership } from "../types/membership";
 import { Medication, MedicationAdherenceLog } from "../types/medication";
 import { Appointment } from "../types/appointment";
-import { isFirebaseConfigured, firebaseClientConfig } from "./config";
+import { isFirebaseConfigured } from "./config";
 import { auth as firebaseAuth } from "./client";
 import {
   signInWithEmailAndPassword,
@@ -23,7 +23,18 @@ import {
   DEMO_ADHERENCE_LOGS,
   DEMO_APPOINTMENTS,
 } from "./demo-data";
-import { verifyPasscode, hashPasscode, generateSalt } from "../auth/passcode";
+import {
+  getOrCreateUserDoc,
+  fetchCareProfilesForUser,
+  createCareProfileInFirestore,
+  joinProfileWithPasscodeInFirestore,
+  fetchProfileMedications,
+  fetchProfileAppointments,
+  fetchProfileAdherenceLogs,
+  logAdherenceDoseInFirestore,
+  updateUserActiveProfile,
+} from "./firestore";
+import { hashPasscode, generateSalt, verifyPasscode } from "../auth/passcode";
 
 interface AuthContextType {
   user: AppUser | null;
@@ -40,11 +51,13 @@ interface AuthContextType {
   signIn: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   signUp: (email: string, pass: string, name: string, role: UserRole) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
-  switchProfile: (profileId: string) => void;
+  switchProfile: (profileId: string) => Promise<void>;
   createProfile: (data: Partial<CareProfile>) => Promise<CareProfile>;
   joinProfileWithPasscode: (profileId: string, passcode: string) => Promise<{ success: boolean; error?: string }>;
-  logMedicationDose: (logId: string, status: "taken" | "skipped") => void;
+  logMedicationDose: (logId: string, status: "taken" | "skipped") => Promise<void>;
   enterDemoMode: (role?: UserRole) => void;
+  getIdToken: () => Promise<string | null>;
+  refreshUserData: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -53,49 +66,90 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [user, setUser] = useState<AppUser | null>(null);
   const [activeProfile, setActiveProfile] = useState<CareProfile | null>(null);
-  const [allProfiles, setAllProfiles] = useState<CareProfile[]>([DEMO_PROFILE]);
-  const [memberships, setMemberships] = useState<CareProfileMembership[]>(DEMO_MEMBERSHIPS);
-  const [medications, setMedications] = useState<Medication[]>(DEMO_MEDICATIONS);
-  const [adherenceLogs, setAdherenceLogs] = useState<MedicationAdherenceLog[]>(DEMO_ADHERENCE_LOGS);
-  const [appointments, setAppointments] = useState<Appointment[]>(DEMO_APPOINTMENTS);
+  const [allProfiles, setAllProfiles] = useState<CareProfile[]>([]);
+  const [memberships, setMemberships] = useState<CareProfileMembership[]>([]);
+  const [medications, setMedications] = useState<Medication[]>([]);
+  const [adherenceLogs, setAdherenceLogs] = useState<MedicationAdherenceLog[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
 
   const isFirebaseReady = isFirebaseConfigured() && firebaseAuth !== null;
 
+  // Load profile data (medications, appointments, adherence) for the active profile
+  const loadActiveProfileData = useCallback(async (profileId: string) => {
+    try {
+      const [meds, apts, logs] = await Promise.all([
+        fetchProfileMedications(profileId),
+        fetchProfileAppointments(profileId),
+        fetchProfileAdherenceLogs(profileId),
+      ]);
+      setMedications(meds);
+      setAppointments(apts);
+      setAdherenceLogs(logs);
+    } catch (err) {
+      console.warn("Could not load full profile data from Firestore:", err);
+    }
+  }, []);
+
+  // Refresh real user profile and memberships from Firestore
+  const loadRealUserData = useCallback(async (fbUser: FirebaseUser) => {
+    try {
+      // 1. Fetch or create user record in Firestore
+      const appUser = await getOrCreateUserDoc({
+        uid: fbUser.uid,
+        email: fbUser.email,
+        displayName: fbUser.displayName,
+      });
+      setUser(appUser);
+
+      // 2. Fetch real memberships and care profiles
+      const { profiles, memberships: userMemberships } = await fetchCareProfilesForUser(fbUser.uid);
+      setAllProfiles(profiles);
+      setMemberships(userMemberships);
+
+      if (profiles.length > 0) {
+        // Choose previously active profile or first available
+        const current = profiles.find((p) => p.id === appUser.activeProfileId) || profiles[0];
+        setActiveProfile(current);
+        await loadActiveProfileData(current.id);
+      } else {
+        setActiveProfile(null);
+        setMedications([]);
+        setAppointments([]);
+        setAdherenceLogs([]);
+      }
+    } catch (err) {
+      console.error("Error loading real Firestore data:", err);
+    }
+  }, [loadActiveProfileData]);
+
   useEffect(() => {
-    // If Firebase Auth is configured, subscribe to state changes
     if (isFirebaseReady && firebaseAuth) {
       const unsubscribe = onAuthStateChanged(firebaseAuth, async (fbUser) => {
         setFirebaseUser(fbUser);
         if (fbUser) {
-          // Construct AppUser from Firebase user
-          const appUser: AppUser = {
-            uid: fbUser.uid,
-            email: fbUser.email || "",
-            displayName: fbUser.displayName || fbUser.email?.split("@")[0] || "User",
-            role: "elderly_patient",
-            accessibleProfileIds: [DEMO_PROFILE.id],
-            activeProfileId: DEMO_PROFILE.id,
-            createdAt: new Date().toISOString(),
-            lastLoginAt: new Date().toISOString(),
-          };
-          setUser(appUser);
-          setActiveProfile(DEMO_PROFILE);
           setIsDemoMode(false);
-        } else if (!isDemoMode) {
-          // Auto-load demo data so reviewer/evaluator has an immediate working state
-          enterDemoMode("elderly_patient");
+          await loadRealUserData(fbUser);
+        } else {
+          // Unauthenticated state
+          setUser(null);
+          setActiveProfile(null);
+          setAllProfiles([]);
+          setMemberships([]);
+          setMedications([]);
+          setAdherenceLogs([]);
+          setAppointments([]);
         }
         setLoading(false);
       });
       return () => unsubscribe();
     } else {
-      // If Firebase credentials are not yet configured in env, default to demo mode
+      // If Firebase credentials not available, start in Demo Mode
       enterDemoMode("elderly_patient");
       setLoading(false);
     }
-  }, [isFirebaseReady]);
+  }, [isFirebaseReady, loadRealUserData]);
 
   const enterDemoMode = (role: UserRole = "elderly_patient") => {
     setIsDemoMode(true);
@@ -129,21 +183,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
     if (isFirebaseReady && firebaseAuth) {
       try {
-        await signInWithEmailAndPassword(firebaseAuth, email, pass);
+        const cred = await signInWithEmailAndPassword(firebaseAuth, email, pass);
         setIsDemoMode(false);
+        await loadRealUserData(cred.user);
         return { success: true };
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Authentication failed";
+        let message = "Authentication failed";
+        if (err instanceof Error) {
+          if (
+            err.message.includes("auth/invalid-credential") ||
+            err.message.includes("auth/wrong-password") ||
+            err.message.includes("auth/user-not-found")
+          ) {
+            message = "Invalid email or password. Please verify your credentials.";
+          } else if (err.message.includes("auth/too-many-requests")) {
+            message = "Access temporarily disabled due to multiple failed login attempts. Please try again later.";
+          } else if (err.message.includes("auth/email-already-in-use")) {
+            message = "An account with this email already exists. Please sign in.";
+          } else {
+            message = err.message;
+          }
+        }
         return { success: false, error: message };
       }
     } else {
-      // Demo authentication validation
-      if (!email.includes("@")) {
-        return { success: false, error: "Please provide a valid email address." };
-      }
-      if (pass.length < 6) {
-        return { success: false, error: "Password must be at least 6 characters." };
-      }
+      // Demo validation
+      if (!email.includes("@")) return { success: false, error: "Please provide a valid email." };
+      if (pass.length < 6) return { success: false, error: "Password must be at least 6 characters." };
       enterDemoMode("elderly_patient");
       return { success: true };
     }
@@ -158,17 +224,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (isFirebaseReady && firebaseAuth) {
       try {
         const userCred = await createUserWithEmailAndPassword(firebaseAuth, email, pass);
-        const newUser: AppUser = {
-          uid: userCred.user.uid,
-          email,
-          displayName: name,
-          role,
-          accessibleProfileIds: [],
-          createdAt: new Date().toISOString(),
-          lastLoginAt: new Date().toISOString(),
-        };
-        setUser(newUser);
+        const appUser = await getOrCreateUserDoc(
+          {
+            uid: userCred.user.uid,
+            email: userCred.user.email,
+            displayName: name,
+          },
+          role
+        );
+        setUser(appUser);
         setIsDemoMode(false);
+        setActiveProfile(null);
+        setAllProfiles([]);
+        setMemberships([]);
         return { success: true };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Account registration failed";
@@ -177,7 +245,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } else {
       if (!email.includes("@")) return { success: false, error: "Valid email required." };
       if (pass.length < 6) return { success: false, error: "Password must be at least 6 characters." };
-      
+
       const newDemoUser: AppUser = {
         uid: `demo-${Date.now()}`,
         email,
@@ -201,113 +269,148 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setFirebaseUser(null);
     setActiveProfile(null);
+    setAllProfiles([]);
+    setMemberships([]);
+    setMedications([]);
+    setAdherenceLogs([]);
+    setAppointments([]);
     setIsDemoMode(false);
   };
 
-  const switchProfile = (profileId: string) => {
+  const switchProfile = async (profileId: string) => {
     const found = allProfiles.find((p) => p.id === profileId);
     if (found) {
       setActiveProfile(found);
+      if (!isDemoMode && user) {
+        await updateUserActiveProfile(user.uid, profileId);
+        await loadActiveProfileData(profileId);
+      }
     }
   };
 
   const createProfile = async (data: Partial<CareProfile>): Promise<CareProfile> => {
-    const salt = generateSalt();
-    const defaultCode = "CARE26";
-    const passcodeHash = await hashPasscode(defaultCode, salt);
-
-    const newProfile: CareProfile = {
-      id: `profile-${Date.now()}`,
-      patientName: data.patientName || "New Patient",
-      preferredName: data.preferredName || data.patientName?.split(" ")[0] || "Patient",
-      dateOfBirth: data.dateOfBirth || "1955-01-01",
-      allergies: data.allergies || [],
-      primaryDoctor: data.primaryDoctor || {
-        name: "Dr. Primary Care, MD",
-        clinic: "Community Medical Center",
-        phone: "(555) 555-0199",
-      },
-      emergencyContacts: data.emergencyContacts || [],
-      joinPasscodeHash: passcodeHash,
-      joinPasscodeSalt: salt,
-      passcodeExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      createdBy: user?.uid || "system",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    setAllProfiles((prev) => [...prev, newProfile]);
-    setActiveProfile(newProfile);
-
-    if (user) {
+    if (!isDemoMode && isFirebaseReady && user) {
+      // Real Firestore persistence
+      const { profile, membership } = await createCareProfileInFirestore(user, data);
+      setAllProfiles((prev) => [...prev, profile]);
+      setMemberships((prev) => [...prev, membership]);
+      setActiveProfile(profile);
       setUser({
         ...user,
-        activeProfileId: newProfile.id,
-        accessibleProfileIds: [...user.accessibleProfileIds, newProfile.id],
+        activeProfileId: profile.id,
+        accessibleProfileIds: [...(user.accessibleProfileIds || []), profile.id],
       });
-    }
+      return profile;
+    } else {
+      // In-memory demo creation
+      const salt = generateSalt();
+      const defaultCode = "CARE26";
+      const passcodeHash = await hashPasscode(defaultCode, salt);
 
-    return newProfile;
+      const newProfile: CareProfile = {
+        id: `profile-${Date.now()}`,
+        patientName: data.patientName || "New Patient",
+        preferredName: data.preferredName || data.patientName?.split(" ")[0] || "Patient",
+        dateOfBirth: data.dateOfBirth || "1955-01-01",
+        allergies: data.allergies || [],
+        primaryDoctor: data.primaryDoctor || {
+          name: "Dr. Primary Care, MD",
+          clinic: "Community Medical Center",
+          phone: "(555) 555-0199",
+        },
+        emergencyContacts: data.emergencyContacts || [],
+        joinPasscodeHash: passcodeHash,
+        joinPasscodeSalt: salt,
+        passcodeExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        createdBy: user?.uid || "system",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      setAllProfiles((prev) => [...prev, newProfile]);
+      setActiveProfile(newProfile);
+
+      if (user) {
+        setUser({
+          ...user,
+          activeProfileId: newProfile.id,
+          accessibleProfileIds: [...user.accessibleProfileIds, newProfile.id],
+        });
+      }
+      return newProfile;
+    }
   };
 
   const joinProfileWithPasscode = async (
     profileId: string,
     passcode: string
   ): Promise<{ success: boolean; error?: string }> => {
-    const target = allProfiles.find((p) => p.id === profileId);
-    if (!target) {
-      return { success: false, error: "Care profile not found. Please verify the profile ID." };
+    if (!isDemoMode && isFirebaseReady && user) {
+      // Real Firestore Join
+      const result = await joinProfileWithPasscodeInFirestore(user, profileId, passcode);
+      if (result.success && result.profile && result.membership) {
+        setAllProfiles((prev) => {
+          if (prev.some((p) => p.id === result.profile!.id)) return prev;
+          return [...prev, result.profile!];
+        });
+        setMemberships((prev) => {
+          if (prev.some((m) => m.id === result.membership!.id)) return prev;
+          return [...prev, result.membership!];
+        });
+        setActiveProfile(result.profile);
+        await loadActiveProfileData(result.profile.id);
+        return { success: true };
+      }
+      return { success: false, error: result.error || "Failed to join profile." };
+    } else {
+      // Demo in-memory join
+      const target = allProfiles.find((p) => p.id === profileId);
+      if (!target) {
+        return { success: false, error: "Care profile not found. Please verify the profile ID." };
+      }
+
+      if (!target.joinPasscodeHash || !target.joinPasscodeSalt) {
+        return { success: false, error: "This profile has no active passcode invitation." };
+      }
+
+      const isValid = await verifyPasscode(passcode, target.joinPasscodeHash, target.joinPasscodeSalt);
+      if (!isValid) {
+        return { success: false, error: "Incorrect passcode. Please try again." };
+      }
+
+      if (user) {
+        const newMembership: CareProfileMembership = {
+          id: `mem-${Date.now()}`,
+          profileId: target.id,
+          userId: user.uid,
+          userEmail: user.email,
+          userName: user.displayName,
+          role: user.role,
+          relationshipToPatient: user.role === "family_member" ? "Family Member" : "Caregiver",
+          permissions: [
+            "view_profile",
+            "view_medications",
+            "log_adherence",
+            "view_appointments",
+            "view_members",
+            "view_timeline",
+          ],
+          status: "active",
+          joinedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        setMemberships((prev) => [...prev, newMembership]);
+        setActiveProfile(target);
+      }
+      return { success: true };
     }
-
-    if (!target.joinPasscodeHash || !target.joinPasscodeSalt) {
-      return { success: false, error: "This profile has no active passcode invitation." };
-    }
-
-    if (target.passcodeExpiresAt && new Date().getTime() > new Date(target.passcodeExpiresAt).getTime()) {
-      return { success: false, error: "This invitation code has expired." };
-    }
-
-    const isValid = await verifyPasscode(passcode, target.joinPasscodeHash, target.joinPasscodeSalt);
-    if (!isValid) {
-      return { success: false, error: "Incorrect passcode. Please try again." };
-    }
-
-    // Add membership
-    if (user) {
-      const newMembership: CareProfileMembership = {
-        id: `mem-${Date.now()}`,
-        profileId: target.id,
-        userId: user.uid,
-        userEmail: user.email,
-        userName: user.displayName,
-        role: user.role,
-        relationshipToPatient: user.role === "family_member" ? "Family Member" : "Caregiver",
-        permissions: [
-          "view_profile",
-          "view_medications",
-          "log_adherence",
-          "view_appointments",
-          "view_members",
-          "view_timeline",
-        ],
-        status: "active",
-        joinedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      setMemberships((prev) => [...prev, newMembership]);
-      setActiveProfile(target);
-      setUser({
-        ...user,
-        activeProfileId: target.id,
-        accessibleProfileIds: Array.from(new Set([...user.accessibleProfileIds, target.id])),
-      });
-    }
-
-    return { success: true };
   };
 
-  const logMedicationDose = (logId: string, status: "taken" | "skipped") => {
+  const logMedicationDose = async (logId: string, status: "taken" | "skipped") => {
+    const existingLog = adherenceLogs.find((l) => l.id === logId);
+
+    // Optimistic UI update
     setAdherenceLogs((prev) =>
       prev.map((log) => {
         if (log.id === logId) {
@@ -327,6 +430,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return log;
       })
     );
+
+    // If real Firebase user, persist to Firestore
+    if (!isDemoMode && isFirebaseReady && user) {
+      try {
+        await logAdherenceDoseInFirestore(logId, status, user, existingLog);
+      } catch (err) {
+        console.error("Failed to log adherence in Firestore:", err);
+      }
+    }
+  };
+
+  const getIdToken = async (): Promise<string | null> => {
+    if (firebaseUser) {
+      try {
+        return await firebaseUser.getIdToken();
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  };
+
+  const refreshUserData = async () => {
+    if (firebaseUser) {
+      await loadRealUserData(firebaseUser);
+    }
   };
 
   return (
@@ -351,6 +480,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         joinProfileWithPasscode,
         logMedicationDose,
         enterDemoMode,
+        getIdToken,
+        refreshUserData,
       }}
     >
       {children}

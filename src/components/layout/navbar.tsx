@@ -16,12 +16,21 @@ import {
   ShieldCheck,
   Sparkles,
   ChevronDown,
+  Database,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export function Navbar() {
   const pathname = usePathname();
-  const { user, activeProfile, isDemoMode, isFirebaseReady, signOut } = useAuth();
+  const {
+    user,
+    activeProfile,
+    allProfiles,
+    switchProfile,
+    isDemoMode,
+    isFirebaseReady,
+    signOut,
+  } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navLinks = [
@@ -48,11 +57,15 @@ export function Navbar() {
                 <span className="text-2xl font-black text-navy-900 tracking-tight">
                   MediBridge<span className="text-teal-700">AI</span>
                 </span>
-                {isDemoMode && (
+                {isDemoMode ? (
                   <Badge variant="warning" size="sm" className="hidden sm:inline-flex">
                     Demo Mode
                   </Badge>
-                )}
+                ) : user && isFirebaseReady ? (
+                  <Badge variant="success" size="sm" className="hidden sm:inline-flex">
+                    Firestore Live
+                  </Badge>
+                ) : null}
               </div>
               <span className="text-xs text-navy-600 font-medium hidden sm:inline">
                 From Doctor's Advice to Everyday Care
@@ -88,6 +101,25 @@ export function Navbar() {
           <div className="hidden sm:flex items-center gap-3">
             {user ? (
               <div className="flex items-center gap-3 pl-3 border-l border-navy-100">
+                {/* Profile Switcher if multiple profiles exist */}
+                {allProfiles.length > 1 && (
+                  <div className="flex items-center gap-1.5 bg-navy-50 px-3 py-1.5 rounded-xl border border-navy-200 text-xs font-bold text-navy-900">
+                    <span>Patient:</span>
+                    <select
+                      value={activeProfile?.id || ""}
+                      onChange={(e) => switchProfile(e.target.value)}
+                      className="bg-transparent font-bold text-teal-800 focus:outline-none cursor-pointer"
+                      aria-label="Switch active patient profile"
+                    >
+                      {allProfiles.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.patientName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div className="flex flex-col items-end text-right">
                   <div className="flex items-center gap-1.5">
                     <span className="text-base font-bold text-navy-900">
@@ -148,9 +180,13 @@ export function Navbar() {
               <div className="p-3 bg-teal-50 rounded-2xl mb-3 border border-teal-200">
                 <p className="text-base font-bold text-navy-900">{user.displayName}</p>
                 <p className="text-xs text-teal-800 font-medium">{getRoleLabel(user.role)}</p>
-                {activeProfile && (
+                {activeProfile ? (
                   <p className="text-xs text-navy-600 mt-1">
                     Care recipient: <strong>{activeProfile.patientName}</strong>
+                  </p>
+                ) : (
+                  <p className="text-xs text-amber-800 mt-1 font-semibold">
+                    No active care profile selected
                   </p>
                 )}
               </div>

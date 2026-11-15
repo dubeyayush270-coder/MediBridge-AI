@@ -44,6 +44,7 @@ declare module "lucide-react" {
   export const Copy: any;
   export const Check: any;
   export const Plus: any;
+  export const Database: any;
   const anyIcon: any;
   export default anyIcon;
 }
@@ -68,4 +69,8 @@ declare module "firebase/firestore" {
   export function onSnapshot(...args: any[]): any;
   export function serverTimestamp(): any;
   export function Timestamp(): any;
+  export function addDoc(...args: any[]): Promise<any>;
+  export function writeBatch(...args: any[]): any;
+  export function arrayUnion(...args: any[]): any;
+  export function arrayRemove(...args: any[]): any;
 }

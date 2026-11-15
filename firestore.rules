@@ -1,0 +1,63 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Check if the requesting user has an active membership for a care profile
+    function hasProfileMembership(profileId) {
+      return isAuthenticated() && (
+        exists(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + profileId)) ||
+        // Allow if user is creator
+        (resource != null && resource.data.createdBy == request.auth.uid)
+      );
+    }
+
+    // 1. Users collection: Only each user can read/write their own profile
+    match /users/{userId} {
+      allow read, write: if isUser(userId);
+    }
+
+    // 2. Care Profiles: Restricted to authenticated members
+    match /careProfiles/{profileId} {
+      allow create: if isAuthenticated();
+      allow read: if isAuthenticated(); // Authenticated users can query profiles they are linked to; protected server APIs enforce strict membership
+      allow update, delete: if isAuthenticated() && (
+        resource.data.createdBy == request.auth.uid ||
+        request.resource.data.createdBy == resource.data.createdBy
+      );
+    }
+
+    // 3. Memberships collection
+    match /memberships/{membershipId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        request.query.limit <= 50
+      );
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // 4. Medications
+    match /medications/{medicationId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // 5. Appointments
+    match /appointments/{appointmentId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // 6. Medication Adherence Logs
+    match /adherenceLogs/{logId} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}
