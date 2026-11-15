@@ -27,7 +27,7 @@ describe("Firestore Care Profile & Membership Integration", () => {
     lastLoginAt: new Date().toISOString(),
   };
 
-  it("creates care profile with secure salted passcode and active creator membership", async () => {
+  it("creates care profile and stores secure invitation verifier separately in server collection", async () => {
     const salt = generateSalt();
     const passcode = "CARE26";
     const passcodeHash = await hashPasscode(passcode, salt);
@@ -51,12 +51,21 @@ describe("Firestore Care Profile & Membership Integration", () => {
           isPrimary: true,
         },
       ],
-      joinPasscodeHash: passcodeHash,
-      joinPasscodeSalt: salt,
-      passcodeExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       createdBy: testUserA.uid,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+    };
+
+    const serverInvitation = {
+      id: "invite-alice-test-1",
+      profileId: profile.id,
+      passcodeHash,
+      salt,
+      intendedRole: "caregiver",
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      maxAttempts: 5,
+      failedAttempts: 0,
+      isUsed: false,
     };
 
     const creatorMembership: CareProfileMembership = {
@@ -78,7 +87,8 @@ describe("Firestore Care Profile & Membership Integration", () => {
     expect(creatorMembership.permissions).toContain("view_profile");
     expect(creatorMembership.permissions).toContain("view_medications");
     expect(creatorMembership.permissions).toContain("log_adherence");
-    expect(profile.joinPasscodeHash).not.toBe(passcode); // Verifies never stored plaintext
+    expect((profile as any).joinPasscodeHash).toBeUndefined(); // Verifies stripped from care profile
+    expect(serverInvitation.passcodeHash).not.toBe(passcode); // Verifies never stored plaintext
   });
 
   it("retrieves only profiles for which the user holds an active membership", () => {

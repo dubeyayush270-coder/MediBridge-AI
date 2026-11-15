@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
 import { verifyServerAuthToken } from "@/lib/auth/server-verify";
 import {
-  fetchCareProfilesForUser,
-  createCareProfileInFirestore,
-  getOrCreateUserDoc,
-} from "@/lib/firebase/firestore";
-import { CareProfile } from "@/lib/types/care-profile";
+  adminFetchProfilesForUser,
+  adminCreateCareProfile,
+  adminGetOrCreateUserDoc,
+} from "@/lib/server/firestore-admin";
 
 /**
  * GET /api/profiles
- * Fetches all care profiles the authenticated user is an authorized member of.
+ * Fetches all care profiles the authenticated user is an authorized active member of.
  */
 export async function GET(req: Request) {
   try {
@@ -21,7 +20,7 @@ export async function GET(req: Request) {
       );
     }
 
-    const result = await fetchCareProfilesForUser(authUser.uid);
+    const result = await adminFetchProfilesForUser(authUser.uid);
     return NextResponse.json({
       success: true,
       profiles: result.profiles,
@@ -31,14 +30,15 @@ export async function GET(req: Request) {
     console.error("GET /api/profiles error:", err);
     return NextResponse.json(
       { error: err.message || "Failed to fetch care profiles" },
-      { status: 500 }
+      { status: err.statusCode || 500 }
     );
   }
 }
 
 /**
  * POST /api/profiles
- * Creates a new care profile and registers the authenticated user as the creator/member.
+ * Creates a new care profile and registers the authenticated user as the creator.
+ * Automatically stores an initial caregiver invitation code in the protected server collection.
  */
 export async function POST(req: Request) {
   try {
@@ -58,25 +58,25 @@ export async function POST(req: Request) {
       );
     }
 
-    // Ensure user record exists
-    const appUser = await getOrCreateUserDoc({
+    const appUser = await adminGetOrCreateUserDoc({
       uid: authUser.uid,
       email: authUser.email,
       displayName: authUser.displayName || null,
     });
 
-    const result = await createCareProfileInFirestore(appUser, body);
+    const result = await adminCreateCareProfile(appUser, body);
 
     return NextResponse.json({
       success: true,
       profile: result.profile,
       membership: result.membership,
+      initialInvitationCode: result.initialInvitationCode,
     });
   } catch (err: any) {
     console.error("POST /api/profiles error:", err);
     return NextResponse.json(
       { error: err.message || "Failed to create care profile" },
-      { status: 500 }
+      { status: err.statusCode || 500 }
     );
   }
 }

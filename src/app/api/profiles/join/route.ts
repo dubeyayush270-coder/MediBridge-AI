@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { verifyServerAuthToken } from "@/lib/auth/server-verify";
-import { joinProfileWithPasscodeInFirestore, getOrCreateUserDoc } from "@/lib/firebase/firestore";
+import {
+  adminGetOrCreateUserDoc,
+  adminRedeemInvitationTransaction,
+} from "@/lib/server/firestore-admin";
 
 /**
  * POST /api/profiles/join
- * Links an authenticated user to an existing profile using a secure passcode.
+ * Links an authenticated user to an existing care profile using atomic Firestore transactions.
+ * Enforces expiration, attempt rate limits, and single-use redemption.
+ * Assigns role using trusted server-side invitation policy.
  */
 export async function POST(req: Request) {
   try {
@@ -26,20 +31,23 @@ export async function POST(req: Request) {
       );
     }
 
-    const appUser = await getOrCreateUserDoc({
+    const appUser = await adminGetOrCreateUserDoc({
       uid: authUser.uid,
       email: authUser.email,
       displayName: authUser.displayName || null,
     });
 
-    const result = await joinProfileWithPasscodeInFirestore(
+    const result = await adminRedeemInvitationTransaction(
       appUser,
       profileId.trim(),
       passcode.trim()
     );
 
     if (!result.success) {
-      return NextResponse.json({ error: result.error || "Join failed" }, { status: 400 });
+      return NextResponse.json(
+        { error: result.error || "Join failed" },
+        { status: 400 }
+      );
     }
 
     return NextResponse.json({
@@ -50,8 +58,8 @@ export async function POST(req: Request) {
   } catch (err: any) {
     console.error("POST /api/profiles/join error:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to link profile" },
-      { status: 500 }
+      { error: err.message || "Failed to link care profile" },
+      { status: err.statusCode || 500 }
     );
   }
 }

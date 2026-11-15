@@ -20,9 +20,6 @@ export interface CareProfile {
     phone: string;
   };
   emergencyContacts: EmergencyContact[];
-  joinPasscodeHash?: string; // Hashed passcode verifier for sharing access
-  joinPasscodeSalt?: string;
-  passcodeExpiresAt?: string;
   createdBy: string; // User UID
   createdAt: string;
   updatedAt: string;

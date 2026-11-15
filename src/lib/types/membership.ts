@@ -33,7 +33,7 @@ export interface CareProfileMembership {
 export interface CaregiverPasscodeInvite {
   id: string;
   profileId: string;
-  patientName: string;
+  patientName?: string;
   passcodeHash: string;
   salt: string;
   intendedRole: UserRole;
@@ -44,6 +44,8 @@ export interface CaregiverPasscodeInvite {
   maxAttempts: number;
   failedAttempts: number;
   isUsed: boolean;
+  redeemedBy?: string;
+  redeemedAt?: string;
   createdBy: string;
   createdAt: string;
 }

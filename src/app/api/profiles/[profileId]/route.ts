@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { verifyServerAuthToken } from "@/lib/auth/server-verify";
-import { fetchUserMemberships } from "@/lib/firebase/firestore";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase/client";
+import {
+  adminVerifyProfileAccess,
+  adminGetCareProfile,
+} from "@/lib/server/firestore-admin";
 
 /**
  * GET /api/profiles/[profileId]
- * Fetches a single care profile with strict authorization check.
- * Rejects requests if user is not an active member.
+ * Fetches a single care profile with strict server-side authorization check.
+ * Rejects requests with 403 Forbidden if user is not an active member.
  */
 export async function GET(
   req: Request,
@@ -27,43 +28,30 @@ export async function GET(
       return NextResponse.json({ error: "profileId is required" }, { status: 400 });
     }
 
-    // Server-side Authorization: Verify calling user's membership in this profile
-    const memberships = await fetchUserMemberships(authUser.uid);
-    const hasMembership = memberships.some(
-      (m) => m.profileId === profileId && m.status === "active"
-    );
-
-    if (!hasMembership) {
+    // Strict Authorization Guard
+    const authCheck = await adminVerifyProfileAccess(authUser.uid, profileId, "view_profile");
+    if (!authCheck.authorized) {
       return NextResponse.json(
-        { error: "Forbidden: You are not authorized to view this patient's profile." },
-        { status: 403 }
+        { error: authCheck.error || "Forbidden: You are not authorized to access this patient profile." },
+        { status: authCheck.statusCode || 403 }
       );
     }
 
-    if (!db) {
-      return NextResponse.json({ error: "Database not connected" }, { status: 500 });
-    }
-
-    const profRef = doc(db, "careProfiles", profileId);
-    const snap = await getDoc(profRef);
-
-    if (!snap.exists()) {
+    const profile = await adminGetCareProfile(profileId);
+    if (!profile) {
       return NextResponse.json({ error: "Care profile not found" }, { status: 404 });
     }
 
-    const data = snap.data();
     return NextResponse.json({
       success: true,
-      profile: {
-        id: snap.id,
-        ...data,
-      },
+      profile,
+      membership: authCheck.membership,
     });
   } catch (err: any) {
     console.error("GET /api/profiles/[profileId] error:", err);
     return NextResponse.json(
       { error: err.message || "Internal server error" },
-      { status: 500 }
+      { status: err.statusCode || 500 }
     );
   }
 }

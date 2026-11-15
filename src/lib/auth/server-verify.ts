@@ -1,6 +1,4 @@
-import { adminAuth, adminDb } from "../firebase/admin";
-import { firebaseClientConfig } from "../firebase/config";
-import { UserRole } from "../types/user";
+import { getAdminAuth } from "../firebase/admin";
 
 export interface VerifiedAuthUser {
   uid: string;
@@ -9,9 +7,9 @@ export interface VerifiedAuthUser {
 }
 
 /**
- * Verify Firebase ID Token on the server.
- * Uses Firebase Admin SDK if service account is configured.
- * Otherwise verifies directly with Google Identity Toolkit API using client configuration.
+ * Verify Firebase ID Token on the server using Firebase Admin SDK.
+ * Strict zero-trust verification: rejects requests if token is invalid, expired,
+ * or if Firebase Admin Auth is unconfigured. Insecure fallbacks are removed.
  */
 export async function verifyServerAuthToken(req: Request): Promise<VerifiedAuthUser | null> {
   const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
@@ -22,48 +20,21 @@ export async function verifyServerAuthToken(req: Request): Promise<VerifiedAuthU
   const token = authHeader.substring(7).trim();
   if (!token) return null;
 
-  // 1. If Firebase Admin SDK is available, verify with Admin SDK
-  if (adminAuth) {
-    try {
-      const decoded = await adminAuth.verifyIdToken(token);
-      return {
-        uid: decoded.uid,
-        email: decoded.email || "",
-        displayName: decoded.name,
-      };
-    } catch (adminErr) {
-      console.warn("adminAuth.verifyIdToken failed:", adminErr);
-    }
+  const adminAuth = getAdminAuth();
+  if (!adminAuth) {
+    console.warn("[Security] Server token verification blocked: Firebase Admin SDK is not configured.");
+    return null;
   }
 
-  // 2. Direct verification with Google Identity Toolkit REST API
-  const apiKey = firebaseClientConfig.apiKey;
-  if (apiKey) {
-    try {
-      const res = await fetch(
-        `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idToken: token }),
-        }
-      );
-
-      if (res.ok) {
-        const data = await res.json();
-        const userObj = data.users?.[0];
-        if (userObj && userObj.localId) {
-          return {
-            uid: userObj.localId,
-            email: userObj.email || "",
-            displayName: userObj.displayName,
-          };
-        }
-      }
-    } catch (netErr) {
-      console.error("Google token verification network error:", netErr);
-    }
+  try {
+    const decoded = await adminAuth.verifyIdToken(token, true);
+    return {
+      uid: decoded.uid,
+      email: decoded.email || "",
+      displayName: decoded.name || decoded.email?.split("@")[0] || "User",
+    };
+  } catch (adminErr) {
+    console.warn("[Security] adminAuth.verifyIdToken rejected invalid token:", adminErr);
+    return null;
   }
-
-  return null;
 }

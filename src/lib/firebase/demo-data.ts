@@ -1,5 +1,5 @@
 import { CareProfile } from "../types/care-profile";
-import { CareProfileMembership } from "../types/membership";
+import { CareProfileMembership, CaregiverPasscodeInvite } from "../types/membership";
 import { Medication, MedicationAdherenceLog } from "../types/medication";
 import { Appointment } from "../types/appointment";
 import { AppUser } from "../types/user";
@@ -51,12 +51,26 @@ export const DEMO_PROFILE: CareProfile = {
       isPrimary: false,
     },
   ],
-  joinPasscodeHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  joinPasscodeSalt: "salt-demo-2026",
-  passcodeExpiresAt: "2026-12-31T23:59:59Z",
   createdBy: "demo-user-eleanor",
   createdAt: "2026-10-01T10:00:00Z",
   updatedAt: "2026-11-14T14:20:00Z",
+};
+
+export const DEMO_INVITATION: CaregiverPasscodeInvite = {
+  id: "invite-demo-care26",
+  profileId: "profile-vance-76",
+  patientName: "Eleanor Vance",
+  passcodeHash: "6125b4e97fcf898370e4b700b46ddcab032faf5c5daaecd900eb542c1549c78c",
+  salt: "abc",
+  intendedRole: "caregiver",
+  relationship: "Designated Caregiver",
+  permissions: ["view_profile", "view_medications", "manage_medications", "log_adherence", "view_appointments", "manage_appointments", "view_members", "view_timeline", "view_ai_insights"],
+  expiresAt: "2027-12-31T23:59:59Z",
+  maxAttempts: 5,
+  failedAttempts: 0,
+  isUsed: false,
+  createdBy: "demo-user-eleanor",
+  createdAt: "2026-10-01T10:00:00Z",
 };
 
 export const DEMO_MEMBERSHIPS: CareProfileMembership[] = [

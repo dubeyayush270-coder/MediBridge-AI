@@ -24,17 +24,15 @@ import {
   DEMO_APPOINTMENTS,
 } from "./demo-data";
 import {
-  getOrCreateUserDoc,
-  fetchCareProfilesForUser,
-  createCareProfileInFirestore,
-  joinProfileWithPasscodeInFirestore,
-  fetchProfileMedications,
-  fetchProfileAppointments,
-  fetchProfileAdherenceLogs,
-  logAdherenceDoseInFirestore,
-  updateUserActiveProfile,
-} from "./firestore";
-import { hashPasscode, generateSalt, verifyPasscode } from "../auth/passcode";
+  apiGetMe,
+  apiUpdateMe,
+  apiGetProfiles,
+  apiGetProfileBundle,
+  apiCreateProfile,
+  apiJoinProfile,
+  apiLogAdherenceDose,
+} from "../api/api-client";
+import { verifyPasscode, hashPasscode, generateSalt } from "../auth/passcode";
 
 interface AuthContextType {
   user: AppUser | null;
@@ -76,51 +74,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const isFirebaseReady = isFirebaseConfigured() && firebaseAuth !== null;
 
-  // Load profile data (medications, appointments, adherence) for the active profile
-  const loadActiveProfileData = useCallback(async (profileId: string) => {
+  // Load profile data (medications, appointments, adherence) via protected server API
+  const loadActiveProfileData = useCallback(async (profileId: string, token: string) => {
     try {
-      const [meds, apts, logs] = await Promise.all([
-        fetchProfileMedications(profileId),
-        fetchProfileAppointments(profileId),
-        fetchProfileAdherenceLogs(profileId),
-      ]);
-      setMedications(meds);
-      setAppointments(apts);
-      setAdherenceLogs(logs);
+      const bundle = await apiGetProfileBundle(token, profileId);
+      setActiveProfile(bundle.profile);
+      setMedications(bundle.medications);
+      setAppointments(bundle.appointments);
+      setAdherenceLogs(bundle.adherenceLogs);
     } catch (err) {
-      console.warn("Could not load full profile data from Firestore:", err);
+      console.warn("[Auth] Failed to load profile bundle from server API:", err);
     }
   }, []);
 
-  // Refresh real user profile and memberships from Firestore
+  // Refresh real user profile and memberships from protected server APIs
   const loadRealUserData = useCallback(async (fbUser: FirebaseUser) => {
     try {
-      // 1. Fetch or create user record in Firestore
-      const appUser = await getOrCreateUserDoc({
-        uid: fbUser.uid,
-        email: fbUser.email,
-        displayName: fbUser.displayName,
-      });
-      setUser(appUser);
+      const token = await fbUser.getIdToken();
 
-      // 2. Fetch real memberships and care profiles
-      const { profiles, memberships: userMemberships } = await fetchCareProfilesForUser(fbUser.uid);
-      setAllProfiles(profiles);
-      setMemberships(userMemberships);
+      // 1. Fetch or initialize user record on protected server API
+      const userRes = await apiGetMe(token);
+      setUser(userRes.user);
 
-      if (profiles.length > 0) {
-        // Choose previously active profile or first available
-        const current = profiles.find((p) => p.id === appUser.activeProfileId) || profiles[0];
-        setActiveProfile(current);
-        await loadActiveProfileData(current.id);
+      // 2. Fetch care profiles and memberships from protected server API
+      const profRes = await apiGetProfiles(token);
+      setAllProfiles(profRes.profiles);
+      setMemberships(profRes.memberships);
+
+      if (profRes.profiles.length > 0) {
+        const preferred =
+          profRes.profiles.find((p) => p.id === userRes.user.activeProfileId) || profRes.profiles[0];
+        await loadActiveProfileData(preferred.id, token);
       } else {
         setActiveProfile(null);
         setMedications([]);
         setAppointments([]);
         setAdherenceLogs([]);
       }
-    } catch (err) {
-      console.error("Error loading real Firestore data:", err);
+    } catch (err: any) {
+      console.error("[Auth] Error communicating with protected server APIs:", err);
+      // If server Admin SDK is unconfigured, fallback gracefully
+      if (err?.message?.includes("Firebase Admin SDK is not initialized")) {
+        console.warn("[Auth] Local dev missing Admin SDK credentials. You can set FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in .env.local.");
+      }
     }
   }, [loadActiveProfileData]);
 
@@ -224,15 +220,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (isFirebaseReady && firebaseAuth) {
       try {
         const userCred = await createUserWithEmailAndPassword(firebaseAuth, email, pass);
-        const appUser = await getOrCreateUserDoc(
-          {
-            uid: userCred.user.uid,
-            email: userCred.user.email,
-            displayName: name,
-          },
-          role
-        );
-        setUser(appUser);
+        const token = await userCred.user.getIdToken();
+        const meRes = await apiGetMe(token);
+        setUser(meRes.user);
         setIsDemoMode(false);
         setActiveProfile(null);
         setAllProfiles([]);
@@ -279,34 +269,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const switchProfile = async (profileId: string) => {
     const found = allProfiles.find((p) => p.id === profileId);
-    if (found) {
-      setActiveProfile(found);
-      if (!isDemoMode && user) {
-        await updateUserActiveProfile(user.uid, profileId);
-        await loadActiveProfileData(profileId);
+    if (!found) return;
+
+    setActiveProfile(found);
+
+    if (!isDemoMode && firebaseUser) {
+      try {
+        const token = await firebaseUser.getIdToken();
+        await apiUpdateMe(token, { activeProfileId: profileId });
+        await loadActiveProfileData(profileId, token);
+      } catch (err) {
+        console.warn("[Auth] Failed to switch profile on server:", err);
       }
     }
   };
 
   const createProfile = async (data: Partial<CareProfile>): Promise<CareProfile> => {
-    if (!isDemoMode && isFirebaseReady && user) {
-      // Real Firestore persistence
-      const { profile, membership } = await createCareProfileInFirestore(user, data);
-      setAllProfiles((prev) => [...prev, profile]);
-      setMemberships((prev) => [...prev, membership]);
-      setActiveProfile(profile);
-      setUser({
-        ...user,
-        activeProfileId: profile.id,
-        accessibleProfileIds: [...(user.accessibleProfileIds || []), profile.id],
-      });
-      return profile;
+    if (!isDemoMode && isFirebaseReady && firebaseUser) {
+      // Protected server API creation
+      const token = await firebaseUser.getIdToken();
+      const res = await apiCreateProfile(token, data);
+
+      setAllProfiles((prev) => [...prev, res.profile]);
+      setMemberships((prev) => [...prev, res.membership]);
+      setActiveProfile(res.profile);
+
+      if (user) {
+        setUser({
+          ...user,
+          activeProfileId: res.profile.id,
+          accessibleProfileIds: [...(user.accessibleProfileIds || []), res.profile.id],
+        });
+      }
+
+      await loadActiveProfileData(res.profile.id, token);
+      return res.profile;
     } else {
       // In-memory demo creation
-      const salt = generateSalt();
-      const defaultCode = "CARE26";
-      const passcodeHash = await hashPasscode(defaultCode, salt);
-
       const newProfile: CareProfile = {
         id: `profile-${Date.now()}`,
         patientName: data.patientName || "New Patient",
@@ -319,9 +318,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           phone: "(555) 555-0199",
         },
         emergencyContacts: data.emergencyContacts || [],
-        joinPasscodeHash: passcodeHash,
-        joinPasscodeSalt: salt,
-        passcodeExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
         createdBy: user?.uid || "system",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -345,47 +341,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     profileId: string,
     passcode: string
   ): Promise<{ success: boolean; error?: string }> => {
-    if (!isDemoMode && isFirebaseReady && user) {
-      // Real Firestore Join
-      const result = await joinProfileWithPasscodeInFirestore(user, profileId, passcode);
-      if (result.success && result.profile && result.membership) {
-        setAllProfiles((prev) => {
-          if (prev.some((p) => p.id === result.profile!.id)) return prev;
-          return [...prev, result.profile!];
-        });
-        setMemberships((prev) => {
-          if (prev.some((m) => m.id === result.membership!.id)) return prev;
-          return [...prev, result.membership!];
-        });
-        setActiveProfile(result.profile);
-        await loadActiveProfileData(result.profile.id);
-        return { success: true };
+    if (!isDemoMode && isFirebaseReady && firebaseUser) {
+      try {
+        const token = await firebaseUser.getIdToken();
+        const res = await apiJoinProfile(token, profileId, passcode);
+
+        if (res.success && res.profile && res.membership) {
+          setAllProfiles((prev) => {
+            if (prev.some((p) => p.id === res.profile!.id)) return prev;
+            return [...prev, res.profile!];
+          });
+          setMemberships((prev) => {
+            if (prev.some((m) => m.id === res.membership!.id)) return prev;
+            return [...prev, res.membership!];
+          });
+          setActiveProfile(res.profile);
+          await loadActiveProfileData(res.profile.id, token);
+          return { success: true };
+        }
+        return { success: false, error: res.error || "Failed to link care profile." };
+      } catch (err: any) {
+        return { success: false, error: err.message || "Network error while joining profile." };
       }
-      return { success: false, error: result.error || "Failed to join profile." };
     } else {
       // Demo in-memory join
       const target = allProfiles.find((p) => p.id === profileId);
-      if (!target) {
+      if (!target && profileId !== DEMO_PROFILE.id) {
         return { success: false, error: "Care profile not found. Please verify the profile ID." };
       }
 
-      if (!target.joinPasscodeHash || !target.joinPasscodeSalt) {
-        return { success: false, error: "This profile has no active passcode invitation." };
-      }
+      const activeTarget = target || DEMO_PROFILE;
 
-      const isValid = await verifyPasscode(passcode, target.joinPasscodeHash, target.joinPasscodeSalt);
-      if (!isValid) {
+      // Eleanor demo passcode check
+      if (passcode.trim().toUpperCase() !== "CARE26") {
         return { success: false, error: "Incorrect passcode. Please try again." };
       }
 
       if (user) {
         const newMembership: CareProfileMembership = {
           id: `mem-${Date.now()}`,
-          profileId: target.id,
+          profileId: activeTarget.id,
           userId: user.uid,
           userEmail: user.email,
           userName: user.displayName,
-          role: user.role,
+          role: user.role === "family_member" ? "family_member" : "caregiver",
           relationshipToPatient: user.role === "family_member" ? "Family Member" : "Caregiver",
           permissions: [
             "view_profile",
@@ -401,7 +400,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
 
         setMemberships((prev) => [...prev, newMembership]);
-        setActiveProfile(target);
+        setActiveProfile(activeTarget);
       }
       return { success: true };
     }
@@ -431,12 +430,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
     );
 
-    // If real Firebase user, persist to Firestore
-    if (!isDemoMode && isFirebaseReady && user) {
+    // If real Firebase user, persist to protected server API
+    if (!isDemoMode && isFirebaseReady && firebaseUser && activeProfile) {
       try {
-        await logAdherenceDoseInFirestore(logId, status, user, existingLog);
+        const token = await firebaseUser.getIdToken();
+        const medId = existingLog?.medicationId || logId;
+        const medName = existingLog?.medicationName || "Medication";
+        const dosage = existingLog?.dosage || "1 dose";
+        const scheduledTime = existingLog?.scheduledTime || "08:00";
+        const scheduledDate = existingLog?.scheduledDate || new Date().toISOString().split("T")[0];
+
+        await apiLogAdherenceDose(token, activeProfile.id, {
+          id: logId,
+          medicationId: medId,
+          medicationName: medName,
+          dosage,
+          scheduledTime,
+          scheduledDate,
+          status,
+        });
       } catch (err) {
-        console.error("Failed to log adherence in Firestore:", err);
+        console.error("[Auth] Failed to persist adherence dose to server API:", err);
       }
     }
   };
