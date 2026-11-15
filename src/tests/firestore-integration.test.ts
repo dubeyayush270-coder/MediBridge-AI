@@ -5,6 +5,7 @@ import { CareProfileMembership } from "../lib/types/membership";
 import { ROLE_PERMISSIONS, hasPermission } from "../lib/auth/rbac";
 import { hashPasscode, generateSalt, verifyPasscode } from "../lib/auth/passcode";
 import { DEMO_USER, DEMO_PROFILE } from "../lib/firebase/demo-data";
+import { normalizePrivateKey } from "../lib/firebase/admin";
 
 describe("Firestore Care Profile & Membership Integration", () => {
   const testUserA: AppUser = {
@@ -228,5 +229,42 @@ describe("Firestore Care Profile & Membership Integration", () => {
     // Ensure real user does not adopt DEMO_USER or DEMO_PROFILE IDs
     expect(realUser.uid).not.toBe(DEMO_USER.uid);
     expect(realUser.accessibleProfileIds).not.toContain(DEMO_PROFILE.id);
+  });
+
+  describe("Vercel & Environment Variable Private Key Normalization", () => {
+    it("handles undefined and empty string gracefully", () => {
+      expect(normalizePrivateKey(undefined)).toBeUndefined();
+      expect(normalizePrivateKey("")).toBeUndefined();
+      expect(normalizePrivateKey("   ")).toBeUndefined();
+    });
+
+    it("converts literal escaped \\n into real newline characters", () => {
+      const raw = "-----BEGIN PRIVATE KEY-----\\nMIIEvgIBADANBgk...\\n-----END PRIVATE KEY-----\\n";
+      const normalized = normalizePrivateKey(raw);
+      expect(normalized).toBe("-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgk...\n-----END PRIVATE KEY-----");
+      expect(normalized).toContain("\n");
+      expect(normalized).not.toContain("\\n");
+    });
+
+    it("strips wrapping double quotes from Vercel environment values", () => {
+      const raw = '"-----BEGIN PRIVATE KEY-----\\nMIIEvg...\\n-----END PRIVATE KEY-----\\n"';
+      const normalized = normalizePrivateKey(raw);
+      expect(normalized?.startsWith("-----BEGIN PRIVATE KEY-----")).toBe(true);
+      expect(normalized?.endsWith("-----END PRIVATE KEY-----")).toBe(true);
+      expect(normalized).not.toContain('"');
+    });
+
+    it("strips wrapping single quotes from Vercel environment values", () => {
+      const raw = "'-----BEGIN PRIVATE KEY-----\\nMIIEvg...\\n-----END PRIVATE KEY-----\\n'";
+      const normalized = normalizePrivateKey(raw);
+      expect(normalized?.startsWith("-----BEGIN PRIVATE KEY-----")).toBe(true);
+      expect(normalized?.endsWith("-----END PRIVATE KEY-----")).toBe(true);
+      expect(normalized).not.toContain("'");
+    });
+
+    it("preserves already-multiline PEM keys", () => {
+      const multiline = "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgk...\n-----END PRIVATE KEY-----";
+      expect(normalizePrivateKey(multiline)).toBe(multiline);
+    });
   });
 });

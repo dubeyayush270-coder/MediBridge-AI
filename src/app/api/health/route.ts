@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { isFirebaseConfigured } from "@/lib/firebase/config";
+import { isFirebaseAdminCredentialConfigured } from "@/lib/firebase/admin";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   return NextResponse.json({
@@ -9,5 +13,6 @@ export async function GET() {
     version: "0.1.0",
     environment: process.env.NODE_ENV || "development",
     firebaseConfigured: isFirebaseConfigured(),
+    firebaseAdminConfigured: isFirebaseAdminCredentialConfigured(),
   });
 }

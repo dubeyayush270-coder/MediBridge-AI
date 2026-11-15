@@ -12,6 +12,9 @@ import { CareProfileMembership } from "@/lib/types/membership";
 import { ROLE_PERMISSIONS } from "@/lib/auth/rbac";
 import { UserRole } from "@/lib/types/user";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/profiles/[profileId]/bundle
  * Consolidated profile data fetch (profile, medications, appointments, adherenceLogs, care circle)

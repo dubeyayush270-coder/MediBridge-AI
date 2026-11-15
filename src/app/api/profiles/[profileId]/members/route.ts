@@ -6,6 +6,9 @@ import { CareProfileMembership } from "@/lib/types/membership";
 import { ROLE_PERMISSIONS } from "@/lib/auth/rbac";
 import { UserRole } from "@/lib/types/user";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/profiles/[profileId]/members
  * Lists all active members of the care profile.

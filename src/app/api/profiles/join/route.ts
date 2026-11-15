@@ -5,6 +5,9 @@ import {
   adminRedeemInvitationTransaction,
 } from "@/lib/server/firestore-admin";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 /**
  * POST /api/profiles/join
  * Links an authenticated user to an existing care profile using atomic Firestore transactions.

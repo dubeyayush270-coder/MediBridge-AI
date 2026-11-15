@@ -23,8 +23,19 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
-.env*.local
 .env
+.env.*
+!.env.example
+
+# vercel
+.vercel
+
+# secrets & credentials
+*.pem
+*.key
+*serviceAccount*.json
+*-firebase-adminsdk-*.json
+serviceAccountKey.json
 
 # typescript
 *.tsbuildinfo

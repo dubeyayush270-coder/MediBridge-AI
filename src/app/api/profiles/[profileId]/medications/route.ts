@@ -6,6 +6,9 @@ import {
   adminSaveMedication,
 } from "@/lib/server/firestore-admin";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/profiles/[profileId]/medications
  * Fetches all medications for the profile.

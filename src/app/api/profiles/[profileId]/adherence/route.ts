@@ -7,6 +7,9 @@ import {
   adminGetOrCreateUserDoc,
 } from "@/lib/server/firestore-admin";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/profiles/[profileId]/adherence
  * Fetches medication adherence logs.

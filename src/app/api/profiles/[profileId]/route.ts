@@ -5,6 +5,9 @@ import {
   adminGetCareProfile,
 } from "@/lib/server/firestore-admin";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/profiles/[profileId]
  * Fetches a single care profile with strict server-side authorization check.

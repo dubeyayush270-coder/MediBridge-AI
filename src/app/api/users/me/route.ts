@@ -7,6 +7,9 @@ import {
 } from "@/lib/server/firestore-admin";
 import { UserRole } from "@/lib/types/user";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/users/me
  * Fetches or initializes the authenticated user record in Firestore.

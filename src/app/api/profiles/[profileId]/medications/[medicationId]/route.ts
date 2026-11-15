@@ -5,6 +5,9 @@ import {
   adminDeleteMedication,
 } from "@/lib/server/firestore-admin";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 /**
  * DELETE /api/profiles/[profileId]/medications/[medicationId]
  * Deletes a medication record.

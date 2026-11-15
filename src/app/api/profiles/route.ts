@@ -6,6 +6,9 @@ import {
   adminGetOrCreateUserDoc,
 } from "@/lib/server/firestore-admin";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/profiles
  * Fetches all care profiles the authenticated user is an authorized active member of.

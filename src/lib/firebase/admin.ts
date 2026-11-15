@@ -4,6 +4,29 @@ import * as fs from "fs";
 let cachedApp: admin.app.App | null = null;
 
 /**
+ * Normalizes PEM private key strings from environment variables (e.g. Vercel, .env).
+ * Handles:
+ * - Escaped newlines ("\\n" -> "\n")
+ * - Surrounding quotes ('...' or "...")
+ * - Multiline formatted keys
+ */
+export function normalizePrivateKey(rawKey: string | undefined): string | undefined {
+  if (!rawKey) return undefined;
+  let key = rawKey.trim();
+  if (!key) return undefined;
+  // Strip surrounding quotes if present
+  if (
+    (key.startsWith('"') && key.endsWith('"')) ||
+    (key.startsWith("'") && key.endsWith("'"))
+  ) {
+    key = key.slice(1, -1);
+  }
+  // Replace escaped \n with actual newlines
+  key = key.replace(/\\n/g, "\n").trim();
+  return key || undefined;
+}
+
+/**
  * Checks whether valid server credentials exist for the Firebase Admin SDK.
  * Returns true if explicit service account credentials, GOOGLE_APPLICATION_CREDENTIALS,
  * or cloud runtime (Cloud Run ADC) are present.
@@ -18,8 +41,7 @@ export function isFirebaseAdminCredentialConfigured(): boolean {
       return true;
     }
   }
-  // Cloud Run or Google Cloud environments automatically provide Application Default Credentials (ADC)
-  if (process.env.K_SERVICE || process.env.GOOGLE_CLOUD_PROJECT || process.env.GAE_SERVICE) return true;
+  if (process.env.K_SERVICE || process.env.GAE_SERVICE) return true;
   return false;
 }
 
@@ -35,31 +57,13 @@ export function getAdminApp(): admin.app.App | null {
 
   const projectId =
     process.env.FIREBASE_PROJECT_ID ||
-    process.env.GOOGLE_CLOUD_PROJECT ||
     process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
+    process.env.GOOGLE_CLOUD_PROJECT ||
     "medibridge-ai-4f126";
 
-  // 1. Check GOOGLE_APPLICATION_CREDENTIALS file path
-  const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (credPath) {
-    try {
-      if (fs.existsSync(credPath)) {
-        const saContent = fs.readFileSync(credPath, "utf8");
-        const sa = JSON.parse(saContent);
-        cachedApp = admin.initializeApp({
-          credential: admin.credential.cert(sa),
-          projectId: sa.project_id || projectId,
-        });
-        return cachedApp;
-      }
-    } catch (err) {
-      console.warn("[Firebase Admin] Could not load GOOGLE_APPLICATION_CREDENTIALS file directly:", err);
-    }
-  }
-
-  // 2. Explicit Service Account Credentials (preferred for local development & CI)
+  // 1. Explicit Service Account Credentials (Vercel, container env, and CI)
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  const privateKey = normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY);
 
   if (clientEmail && privateKey) {
     try {
@@ -77,8 +81,26 @@ export function getAdminApp(): admin.app.App | null {
     }
   }
 
+  // 2. Check GOOGLE_APPLICATION_CREDENTIALS file path (Local development)
+  const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (credPath) {
+    try {
+      if (fs.existsSync(credPath)) {
+        const saContent = fs.readFileSync(credPath, "utf8");
+        const sa = JSON.parse(saContent);
+        cachedApp = admin.initializeApp({
+          credential: admin.credential.cert(sa),
+          projectId: sa.project_id || projectId,
+        });
+        return cachedApp;
+      }
+    } catch (err) {
+      console.warn("[Firebase Admin] Could not load GOOGLE_APPLICATION_CREDENTIALS file directly:", err);
+    }
+  }
+
   // 3. Google Cloud Run / Google Cloud environment (Application Default Credentials)
-  if (process.env.K_SERVICE || process.env.GOOGLE_CLOUD_PROJECT || process.env.NODE_ENV === "production") {
+  if (process.env.K_SERVICE || process.env.GAE_SERVICE) {
     try {
       cachedApp = admin.initializeApp({
         credential: admin.credential.applicationDefault(),

@@ -5,6 +5,9 @@ import {
   adminCreateInvitation,
 } from "@/lib/server/firestore-admin";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 /**
  * POST /api/profiles/[profileId]/invitations
  * Creates a secure, time-limited, rate-limited passcode invitation.
