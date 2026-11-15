@@ -1,10 +1,13 @@
 # MediBridge AI
 
 > **From Doctor's Advice to Everyday Care**  
-> *Catalyst 2026 — PromptWars Hackathon Submission*
+> *Catalyst 2026 — PromptWars Hackathon Submission*  
+> **Challenge Vertical**: *Elderly Care, Healthcare Accessibility & Medication Management*
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel%20Production-teal?style=for-the-badge&logo=vercel)](https://medi-bridge-ai-ruddy.vercel.app/)
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-navy?style=for-the-badge&logo=github)](https://github.com/dubeyayush270-coder/MediBridge-AI)
+[![Single Branch](https://img.shields.io/badge/Branch-main%20only-brightgreen?style=for-the-badge&logo=git)](https://github.com/dubeyayush270-coder/MediBridge-AI)
+[![Repo Size](https://img.shields.io/badge/Repo%20Size-0.26%20MB%20%28%3C10MB%29-blue?style=for-the-badge)](https://github.com/dubeyayush270-coder/MediBridge-AI)
 [![Tests Passing](https://img.shields.io/badge/Vitest-128%20Passed-brightgreen?style=for-the-badge&logo=vitest)](https://github.com/dubeyayush270-coder/MediBridge-AI)
 [![TypeScript](https://img.shields.io/badge/TypeScript-100%25%20Strict-blue?style=for-the-badge&logo=typescript)](https://github.com/dubeyayush270-coder/MediBridge-AI)
 
@@ -39,6 +42,29 @@ Key pillars of MediBridge AI:
 - **Doctor Consultation Management**: Complete clinical visit tracking, preparation notes, companion escort assignments, and transportation assistance requests.
 - **Passcode Care Circles**: Seniors can invite family members and caregivers with 6-character, high-readability passcodes—no complicated OAuth permissions required for elders.
 - **Reliable Notification Engine**: Timezone-aware email reminders, missed dose escalations to caregivers, and upcoming appointment notices powered by Resend.
+
+---
+
+## 🧠 Smart, Contextual & Dynamic Assistant Decision-Making
+
+A core requirement for Catalyst 2026 is demonstrating a **smart, dynamic assistant with contextual decision-making**. MediBridge AI embeds real-time context-awareness across five core healthcare workflows:
+
+1. **Dynamic Temporal & Demographic Context**:
+   - The assistant calculates the elder's age from their date of birth, greets them based on their local time of day (`Good Morning`, `Good Afternoon`, `Good Evening`), and renders dates in spelled-out, cognitive-friendly English (`Sunday, November 15, 2026`).
+2. **Context-Aware Schedule Synthesis**:
+   - Rather than static alarms, the schedule engine dynamically synthesizes today's medication timeline from active prescriptions. It attaches context-specific instructions to every dose: meal timing (*"Take with meal / food"* vs. *"Can take on empty stomach"*), visual pill appearance cues (*"White Round"*), and doctor's special notes.
+3. **Adaptive Adherence Intelligence**:
+   - Real-time adherence algorithms dynamically recalculate today's completion rate, 7-day rolling adherence percentages, and consecutive streak days whenever a dose status changes.
+   - If an elder accidentally taps the wrong button, the assistant enables contextual state corrections (e.g. changing *Skipped* to *Taken*).
+4. **Context-Aware Notification & Escalation Engine**:
+   - **Lead-Time Context**: Evaluates the patient's preferred lead window (e.g. 15–60 mins) to notify them before a dose is due.
+   - **Grace-Period Intelligence**: Distinguishes between approaching doses and overdue doses. Missed-dose alerts only fire after the personalized grace window (e.g. 30–120 mins) expires without a *Taken* record.
+   - **Consensual Caregiver Escalation**: Missed dose alerts escalate to connected family caregivers **only** if the patient has explicitly consented (`escalateMissedToCaregiver === true`) and the caregiver holds active membership in the care circle.
+   - **Timezone Drift Protection**: Normalizes wall-clock hours to UTC using timezone-aware calculations (`scheduler-evaluator.ts`) to avoid errors across daylight saving or regional offsets.
+5. **Contextual Appointment Escort Guidance**:
+   - Intelligently detects whether transportation assistance is requested (`🚗 Transport Assistance Requested`), checks whether a family companion is assigned, and highlights pre-consultation preparation notes and questions for the physician.
+6. **Safety & Zero-Hallucination Guardrails**:
+   - The assistant operates deterministically on verified patient and prescription data. It **never hallucinates dosages, invents medical diagnoses, or alters prescribed regimens**.
 
 ---
 
