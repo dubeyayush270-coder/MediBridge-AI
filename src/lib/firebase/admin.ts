@@ -2,6 +2,18 @@ import * as admin from "firebase-admin";
 
 let cachedApp: admin.app.App | null = null;
 
+/**
+ * Checks whether valid server credentials exist for the Firebase Admin SDK.
+ * Returns true if explicit service account credentials or cloud runtime (Cloud Run ADC) are present.
+ */
+export function isFirebaseAdminCredentialConfigured(): boolean {
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+  if (clientEmail && privateKey) return true;
+  if (process.env.K_SERVICE || process.env.GOOGLE_APPLICATION_CREDENTIALS) return true;
+  return false;
+}
+
 export function getAdminApp(): admin.app.App | null {
   if (cachedApp) {
     return cachedApp;
@@ -48,17 +60,9 @@ export function getAdminApp(): admin.app.App | null {
     }
   }
 
-  // 3. Fallback to ADC if available locally (via `gcloud auth application-default login`)
-  try {
-    cachedApp = admin.initializeApp({
-      projectId,
-      credential: admin.credential.applicationDefault(),
-    });
-    return cachedApp;
-  } catch {
-    // ADC not available in environment
-  }
-
+  // 3. In local development without service account or ADC, do NOT invoke
+  // admin.credential.applicationDefault() because it attempts to reach metadata.google.internal
+  // and throws ENOTFOUND. Return null so callers can handle 503 BACKEND_CREDENTIALS_MISSING cleanly.
   return null;
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { AppUser, UserRole } from "../types/user";
 import { CareProfile } from "../types/care-profile";
 import { CareProfileMembership } from "../types/membership";
@@ -13,6 +13,7 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  updateProfile as updateFirebaseProfile,
   User as FirebaseUser,
 } from "firebase/auth";
 import {
@@ -25,14 +26,15 @@ import {
 } from "./demo-data";
 import {
   apiGetMe,
+  apiInitUser,
   apiUpdateMe,
   apiGetProfiles,
   apiGetProfileBundle,
   apiCreateProfile,
   apiJoinProfile,
   apiLogAdherenceDose,
+  ApiError,
 } from "../api/api-client";
-import { verifyPasscode, hashPasscode, generateSalt } from "../auth/passcode";
 
 interface AuthContextType {
   user: AppUser | null;
@@ -46,6 +48,7 @@ interface AuthContextType {
   loading: boolean;
   isDemoMode: boolean;
   isFirebaseReady: boolean;
+  backendConfigured: boolean;
   signIn: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   signUp: (email: string, pass: string, name: string, role: UserRole) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
@@ -71,7 +74,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
+  const [backendConfigured, setBackendConfigured] = useState<boolean>(true);
 
+  const isSigningUpRef = useRef<boolean>(false);
   const isFirebaseReady = isFirebaseConfigured() && firebaseAuth !== null;
 
   // Load profile data (medications, appointments, adherence) via protected server API
@@ -88,41 +93,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Refresh real user profile and memberships from protected server APIs
-  const loadRealUserData = useCallback(async (fbUser: FirebaseUser) => {
-    try {
-      const token = await fbUser.getIdToken();
+  const loadRealUserData = useCallback(
+    async (fbUser: FirebaseUser) => {
+      try {
+        const token = await fbUser.getIdToken();
 
-      // 1. Fetch or initialize user record on protected server API
-      const userRes = await apiGetMe(token);
-      setUser(userRes.user);
+        // 1. Fetch or initialize user record on protected server API (Self-healing for existing accounts)
+        const userRes = await apiGetMe(token);
+        setUser(userRes.user);
+        setBackendConfigured(true);
 
-      // 2. Fetch care profiles and memberships from protected server API
-      const profRes = await apiGetProfiles(token);
-      setAllProfiles(profRes.profiles);
-      setMemberships(profRes.memberships);
+        // 2. Fetch care profiles and memberships from protected server API
+        const profRes = await apiGetProfiles(token);
+        setAllProfiles(profRes.profiles);
+        setMemberships(profRes.memberships);
 
-      if (profRes.profiles.length > 0) {
-        const preferred =
-          profRes.profiles.find((p) => p.id === userRes.user.activeProfileId) || profRes.profiles[0];
-        await loadActiveProfileData(preferred.id, token);
-      } else {
-        setActiveProfile(null);
-        setMedications([]);
-        setAppointments([]);
-        setAdherenceLogs([]);
+        if (profRes.profiles.length > 0) {
+          const preferred =
+            profRes.profiles.find((p) => p.id === userRes.user.activeProfileId) || profRes.profiles[0];
+          await loadActiveProfileData(preferred.id, token);
+        } else {
+          setActiveProfile(null);
+          setMedications([]);
+          setAppointments([]);
+          setAdherenceLogs([]);
+        }
+      } catch (err: unknown) {
+        if (err instanceof ApiError && err.status === 503) {
+          console.warn("[Auth] Backend Firebase Admin SDK is unconfigured on the server:", err.message);
+          setBackendConfigured(false);
+          // Set active fallback user from Firebase Auth identity so UI remains operational
+          setUser({
+            uid: fbUser.uid,
+            email: fbUser.email || "",
+            displayName: fbUser.displayName || fbUser.email?.split("@")[0] || "User",
+            role: "elderly_patient",
+            accessibleProfileIds: [],
+            createdAt: new Date().toISOString(),
+            lastLoginAt: new Date().toISOString(),
+          });
+        } else {
+          console.error("[Auth] Error communicating with protected server APIs:", err);
+        }
       }
-    } catch (err: any) {
-      console.error("[Auth] Error communicating with protected server APIs:", err);
-      // If server Admin SDK is unconfigured, fallback gracefully
-      if (err?.message?.includes("Firebase Admin SDK is not initialized")) {
-        console.warn("[Auth] Local dev missing Admin SDK credentials. You can set FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in .env.local.");
-      }
-    }
-  }, [loadActiveProfileData]);
+    },
+    [loadActiveProfileData]
+  );
 
   useEffect(() => {
     if (isFirebaseReady && firebaseAuth) {
       const unsubscribe = onAuthStateChanged(firebaseAuth, async (fbUser) => {
+        // Prevent race condition if signUp is actively running
+        if (isSigningUpRef.current) {
+          return;
+        }
+
         setFirebaseUser(fbUser);
         if (fbUser) {
           setIsDemoMode(false);
@@ -179,7 +204,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
     if (isFirebaseReady && firebaseAuth) {
       try {
-        const cred = await signInWithEmailAndPassword(firebaseAuth, email, pass);
+        const cred = await signInWithEmailAndPassword(firebaseAuth, email.trim(), pass);
+        setFirebaseUser(cred.user);
         setIsDemoMode(false);
         await loadRealUserData(cred.user);
         return { success: true };
@@ -219,18 +245,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ): Promise<{ success: boolean; error?: string }> => {
     if (isFirebaseReady && firebaseAuth) {
       try {
-        const userCred = await createUserWithEmailAndPassword(firebaseAuth, email, pass);
-        const token = await userCred.user.getIdToken();
-        const meRes = await apiGetMe(token);
-        setUser(meRes.user);
+        isSigningUpRef.current = true;
+        const userCred = await createUserWithEmailAndPassword(firebaseAuth, email.trim(), pass);
+        setFirebaseUser(userCred.user);
+
+        // Update profile in Firebase Auth with full legal/preferred name
+        await updateFirebaseProfile(userCred.user, { displayName: name.trim() }).catch(() => {});
+
+        // Mint fresh ID token
+        const token = await userCred.user.getIdToken(true);
+
+        try {
+          // Initialize user record on protected backend with user's selected role and display name
+          const initRes = await apiInitUser(token, { displayName: name.trim(), role });
+          setUser(initRes.user);
+          setBackendConfigured(true);
+        } catch (apiErr: unknown) {
+          if (apiErr instanceof ApiError && apiErr.status === 503) {
+            console.warn("[Auth] Backend Admin SDK unconfigured during registration:", apiErr.message);
+            setBackendConfigured(false);
+            setUser({
+              uid: userCred.user.uid,
+              email: userCred.user.email || email.trim(),
+              displayName: name.trim(),
+              role,
+              accessibleProfileIds: [],
+              createdAt: new Date().toISOString(),
+              lastLoginAt: new Date().toISOString(),
+            });
+          } else {
+            throw apiErr;
+          }
+        }
+
         setIsDemoMode(false);
         setActiveProfile(null);
         setAllProfiles([]);
         setMemberships([]);
         return { success: true };
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Account registration failed";
+        let message = "Account registration failed";
+        if (err instanceof Error) {
+          if (err.message.includes("auth/email-already-in-use")) {
+            message = "An account with this email already exists. Please sign in instead.";
+          } else if (err.message.includes("auth/weak-password")) {
+            message = "Password must be at least 6 characters.";
+          } else if (err.message.includes("auth/invalid-email")) {
+            message = "Please provide a valid email address.";
+          } else {
+            message = err.message;
+          }
+        }
         return { success: false, error: message };
+      } finally {
+        isSigningUpRef.current = false;
       }
     } else {
       if (!email.includes("@")) return { success: false, error: "Valid email required." };
@@ -238,8 +306,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const newDemoUser: AppUser = {
         uid: `demo-${Date.now()}`,
-        email,
-        displayName: name || "New User",
+        email: email.trim(),
+        displayName: name.trim() || "New User",
         role,
         accessibleProfileIds: [DEMO_PROFILE.id],
         activeProfileId: DEMO_PROFILE.id,
@@ -486,6 +554,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading,
         isDemoMode,
         isFirebaseReady,
+        backendConfigured,
         signIn,
         signUp,
         signOut,

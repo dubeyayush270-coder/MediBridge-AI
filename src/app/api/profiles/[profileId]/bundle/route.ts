@@ -6,7 +6,6 @@ import {
   adminFetchMedications,
   adminFetchAppointments,
   adminFetchAdherenceLogs,
-  adminFetchMembershipsForUser,
 } from "@/lib/server/firestore-admin";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { CareProfileMembership } from "@/lib/types/membership";
@@ -23,11 +22,11 @@ export async function GET(
   { params }: { params: { profileId: string } }
 ) {
   try {
-    const authUser = await verifyServerAuthToken(req);
-    if (!authUser) {
+    const authResult = await verifyServerAuthToken(req);
+    if (!authResult.success) {
       return NextResponse.json(
-        { error: "Unauthorized: Missing or invalid authentication token" },
-        { status: 401 }
+        { error: authResult.error, code: authResult.code },
+        { status: authResult.status }
       );
     }
 
@@ -36,7 +35,7 @@ export async function GET(
       return NextResponse.json({ error: "profileId is required" }, { status: 400 });
     }
 
-    const authCheck = await adminVerifyProfileAccess(authUser.uid, profileId, "view_profile");
+    const authCheck = await adminVerifyProfileAccess(authResult.user.uid, profileId, "view_profile");
     if (!authCheck.authorized) {
       return NextResponse.json(
         { error: authCheck.error || "Forbidden: You are not an active member of this care profile." },

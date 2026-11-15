@@ -15,11 +15,11 @@ export async function GET(
   { params }: { params: { profileId: string } }
 ) {
   try {
-    const authUser = await verifyServerAuthToken(req);
-    if (!authUser) {
+    const authResult = await verifyServerAuthToken(req);
+    if (!authResult.success) {
       return NextResponse.json(
-        { error: "Unauthorized: Missing or invalid authentication token" },
-        { status: 401 }
+        { error: authResult.error, code: authResult.code },
+        { status: authResult.status }
       );
     }
 
@@ -29,7 +29,7 @@ export async function GET(
     }
 
     // Strict Authorization Guard
-    const authCheck = await adminVerifyProfileAccess(authUser.uid, profileId, "view_profile");
+    const authCheck = await adminVerifyProfileAccess(authResult.user.uid, profileId, "view_profile");
     if (!authCheck.authorized) {
       return NextResponse.json(
         { error: authCheck.error || "Forbidden: You are not authorized to access this patient profile." },

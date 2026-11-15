@@ -12,15 +12,15 @@ import {
  */
 export async function GET(req: Request) {
   try {
-    const authUser = await verifyServerAuthToken(req);
-    if (!authUser) {
+    const authResult = await verifyServerAuthToken(req);
+    if (!authResult.success) {
       return NextResponse.json(
-        { error: "Unauthorized: Missing or invalid authentication token" },
-        { status: 401 }
+        { error: authResult.error, code: authResult.code },
+        { status: authResult.status }
       );
     }
 
-    const result = await adminFetchProfilesForUser(authUser.uid);
+    const result = await adminFetchProfilesForUser(authResult.user.uid);
     return NextResponse.json({
       success: true,
       profiles: result.profiles,
@@ -42,11 +42,11 @@ export async function GET(req: Request) {
  */
 export async function POST(req: Request) {
   try {
-    const authUser = await verifyServerAuthToken(req);
-    if (!authUser) {
+    const authResult = await verifyServerAuthToken(req);
+    if (!authResult.success) {
       return NextResponse.json(
-        { error: "Unauthorized: Missing or invalid authentication token" },
-        { status: 401 }
+        { error: authResult.error, code: authResult.code },
+        { status: authResult.status }
       );
     }
 
@@ -59,9 +59,9 @@ export async function POST(req: Request) {
     }
 
     const appUser = await adminGetOrCreateUserDoc({
-      uid: authUser.uid,
-      email: authUser.email,
-      displayName: authUser.displayName || null,
+      uid: authResult.user.uid,
+      email: authResult.user.email,
+      displayName: authResult.user.displayName || null,
     });
 
     const result = await adminCreateCareProfile(appUser, body);

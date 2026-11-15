@@ -1,11 +1,15 @@
-import { AppUser } from "../types/user";
+import { AppUser, UserRole } from "../types/user";
 import { CareProfile } from "../types/care-profile";
 import { CareProfileMembership } from "../types/membership";
 import { Medication, MedicationAdherenceLog } from "../types/medication";
 import { Appointment } from "../types/appointment";
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number) {
+  constructor(
+    message: string,
+    public status: number,
+    public code?: string
+  ) {
     super(message);
     this.name = "ApiError";
   }
@@ -26,7 +30,7 @@ async function request<T>(
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    throw new ApiError(data.error || `HTTP error ${res.status}`, res.status);
+    throw new ApiError(data.error || `HTTP error ${res.status}`, res.status, data.code);
   }
 
   return data as T;
@@ -34,6 +38,16 @@ async function request<T>(
 
 export async function apiGetMe(token: string): Promise<{ user: AppUser }> {
   return request<{ user: AppUser }>("/api/users/me", token);
+}
+
+export async function apiInitUser(
+  token: string,
+  profile: { displayName?: string; role?: UserRole }
+): Promise<{ user: AppUser }> {
+  return request<{ user: AppUser }>("/api/users/me", token, {
+    method: "POST",
+    body: JSON.stringify(profile),
+  });
 }
 
 export async function apiUpdateMe(

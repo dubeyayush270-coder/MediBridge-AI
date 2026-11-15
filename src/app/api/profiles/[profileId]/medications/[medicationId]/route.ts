@@ -15,16 +15,16 @@ export async function DELETE(
   { params }: { params: { profileId: string; medicationId: string } }
 ) {
   try {
-    const authUser = await verifyServerAuthToken(req);
-    if (!authUser) {
+    const authResult = await verifyServerAuthToken(req);
+    if (!authResult.success) {
       return NextResponse.json(
-        { error: "Unauthorized: Missing or invalid authentication token" },
-        { status: 401 }
+        { error: authResult.error, code: authResult.code },
+        { status: authResult.status }
       );
     }
 
     const { profileId, medicationId } = params;
-    const authCheck = await adminVerifyProfileAccess(authUser.uid, profileId, "manage_medications");
+    const authCheck = await adminVerifyProfileAccess(authResult.user.uid, profileId, "manage_medications");
     if (!authCheck.authorized) {
       return NextResponse.json(
         { error: authCheck.error || "Forbidden: Your role does not permit deleting medications." },
