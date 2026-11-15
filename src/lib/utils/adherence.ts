@@ -22,6 +22,16 @@ export function generateTodaySchedule(
   const activeMeds = medications.filter((m) => m.status === "active");
   const schedule: MedicationAdherenceLog[] = [];
 
+  // Index today's logs by medicationId and scheduled time for O(1) lookup efficiency
+  const todayLogsMap = new Map<string, MedicationAdherenceLog>();
+  for (const log of adherenceLogs) {
+    if (log.scheduledDate === targetDate) {
+      const cleanTime = (log.scheduledTime || "").replace(/[^0-9]/g, "");
+      todayLogsMap.set(`${log.medicationId}_${log.scheduledTime}`, log);
+      todayLogsMap.set(`${log.medicationId}_${cleanTime}`, log);
+    }
+  }
+
   for (const med of activeMeds) {
     const times = med.scheduleTimes && med.scheduleTimes.length > 0
       ? med.scheduleTimes
@@ -31,13 +41,10 @@ export function generateTodaySchedule(
       const cleanTime = slot.time.replace(/[^0-9]/g, "");
       const expectedSlotId = `adh_${med.profileId}_${med.id}_${targetDate}_${cleanTime}`;
 
-      // Check for existing log matching this medication, date, and scheduled time
-      const existing = adherenceLogs.find(
-        (l) =>
-          l.medicationId === med.id &&
-          l.scheduledDate === targetDate &&
-          (l.scheduledTime === slot.time || l.scheduledTime.replace(/[^0-9]/g, "") === cleanTime)
-      );
+      // O(1) fast lookup
+      const existing =
+        todayLogsMap.get(`${med.id}_${slot.time}`) ||
+        todayLogsMap.get(`${med.id}_${cleanTime}`);
 
       if (existing) {
         schedule.push({
@@ -111,7 +118,8 @@ export function calculateAdherenceStats(
     pastWeekDates.push(getLocalDateString(d));
   }
 
-  const weeklyLogs = adherenceLogs.filter((l) => pastWeekDates.includes(l.scheduledDate));
+  const pastWeekSet = new Set(pastWeekDates);
+  const weeklyLogs = adherenceLogs.filter((l) => pastWeekSet.has(l.scheduledDate));
   const weeklyTaken = weeklyLogs.filter((l) => l.status === "taken").length;
   const weeklyTotalDecided = weeklyLogs.filter(
     (l) => l.status === "taken" || l.status === "skipped" || l.status === "missed"

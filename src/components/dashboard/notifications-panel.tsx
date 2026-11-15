@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,7 +56,7 @@ export function NotificationsPanel({ profileId }: NotificationsPanelProps) {
   const [feedback, setFeedback] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
 
   // Fetch notification data
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!profileId || isDemoMode) {
       setLoading(false);
       return;
@@ -78,16 +78,16 @@ export function NotificationsPanel({ profileId }: NotificationsPanelProps) {
         setEmailConfigured(Boolean(data.emailProviderConfigured));
         if (data.senderAddress) setSenderAddress(data.senderAddress);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.warn("Could not load notifications:", err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [profileId, isDemoMode, firebaseUser]);
 
   useEffect(() => {
     loadData();
-  }, [profileId, user]);
+  }, [loadData]);
 
   // Save Preferences
   const handleSavePreferences = async () => {
@@ -451,7 +451,7 @@ export function NotificationsPanel({ profileId }: NotificationsPanelProps) {
               <Mail className="w-8 h-8 text-navy-400 mx-auto" />
               <p className="text-sm font-bold text-navy-700">No notifications dispatched yet</p>
               <p className="text-xs text-navy-500">
-                Tap "Send Test Email" to verify live transactional delivery.
+                Tap &quot;Send Test Email&quot; to verify live transactional delivery.
               </p>
             </div>
           ) : (

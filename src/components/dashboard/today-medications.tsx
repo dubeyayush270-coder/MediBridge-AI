@@ -58,9 +58,15 @@ export function TodayMedications({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Compute timezone-aware today schedule dynamically from prescriptions
-  const todayDoses: MedicationAdherenceLog[] = generateTodaySchedule(medications, adherenceLogs);
-  const takenCount = todayDoses.filter((d) => d.status === "taken").length;
+  // Compute timezone-aware today schedule dynamically from prescriptions with memoization
+  const todayDoses: MedicationAdherenceLog[] = React.useMemo(
+    () => generateTodaySchedule(medications, adherenceLogs),
+    [medications, adherenceLogs]
+  );
+  const takenCount = React.useMemo(
+    () => todayDoses.filter((d) => d.status === "taken").length,
+    [todayDoses]
+  );
   const totalCount = todayDoses.length;
 
   const handleMarkTaken = (dose: MedicationAdherenceLog) => {

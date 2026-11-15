@@ -211,7 +211,7 @@ export function CareCopilot({
               <div className="flex items-center justify-between text-xs font-bold text-navy-600 uppercase tracking-wider">
                 <span className="flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5 text-teal-700" aria-hidden="true" />
-                  Today's Adherence
+                  Today&apos;s Adherence
                 </span>
                 <span className="text-teal-900 font-black">
                   {briefing.todayStats.takenPercentage}%

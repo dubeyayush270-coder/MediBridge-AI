@@ -122,13 +122,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const token = await fbUser.getIdToken();
 
-        // 1. Fetch or initialize user record on protected server API (Self-healing for existing accounts)
-        const userRes = await apiGetMe(token);
+        // 1 & 2. Fetch user profile and accessible care profiles in parallel (eliminates network waterfall)
+        const [userRes, profRes] = await Promise.all([
+          apiGetMe(token),
+          apiGetProfiles(token),
+        ]);
         setUser(userRes.user);
         setBackendConfigured(true);
-
-        // 2. Fetch care profiles and memberships from protected server API
-        const profRes = await apiGetProfiles(token);
         setAllProfiles(profRes.profiles);
         setMemberships(profRes.memberships);
 

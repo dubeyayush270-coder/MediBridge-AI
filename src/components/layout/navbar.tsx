@@ -68,7 +68,7 @@ export function Navbar() {
                 ) : null}
               </div>
               <span className="text-xs text-navy-600 font-medium hidden sm:inline">
-                From Doctor's Advice to Everyday Care
+                From Doctor&apos;s Advice to Everyday Care
               </span>
             </div>
           </Link>

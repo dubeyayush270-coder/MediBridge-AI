@@ -30,7 +30,7 @@ export default function LandingPage() {
         </div>
 
         <h1 className="text-4xl sm:text-6xl font-black text-navy-900 tracking-tight leading-[1.15]">
-          From Doctor's Advice to{" "}
+          From Doctor&apos;s Advice to{" "}
           <span className="text-teal-700 underline decoration-teal-300 decoration-4 underline-offset-8">
             Everyday Care.
           </span>
@@ -104,7 +104,7 @@ export default function LandingPage() {
             <div className="p-5 rounded-2xl bg-teal-50/70 border-2 border-teal-200 space-y-3">
               <div className="flex items-center gap-2 text-teal-900 font-bold">
                 <Pill className="w-5 h-5 text-teal-700" />
-                <span>Today's Morning Dose</span>
+                <span>Today&apos;s Morning Dose</span>
               </div>
               <h3 className="text-xl font-black text-navy-900">Lisinopril 10 mg</h3>
               <p className="text-sm text-navy-700">Scheduled for 8:00 AM • Oral tablet with water</p>

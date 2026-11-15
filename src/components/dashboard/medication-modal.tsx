@@ -397,7 +397,7 @@ export function MedicationModal({
 
           <div>
             <label className="block text-base font-bold text-navy-900 mb-1">
-              Special Doctor's Instructions
+              Special Doctor&apos;s Instructions
             </label>
             <textarea
               rows={2}

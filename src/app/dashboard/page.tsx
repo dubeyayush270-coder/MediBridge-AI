@@ -127,7 +127,7 @@ export default function DashboardPage() {
                 Welcome to MediBridge AI, {user.displayName}!
               </h2>
               <p className="text-base text-navy-700 max-w-2xl font-medium">
-                You haven't set up or linked an elderly care profile yet. Create a new care profile for yourself or your loved one, or enter a family access passcode to join an existing care circle.
+                You haven&apos;t set up or linked an elderly care profile yet. Create a new care profile for yourself or your loved one, or enter a family access passcode to join an existing care circle.
               </p>
             </div>
 

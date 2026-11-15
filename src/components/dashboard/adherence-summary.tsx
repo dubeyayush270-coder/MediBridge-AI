@@ -12,7 +12,10 @@ interface AdherenceSummaryProps {
 }
 
 export function AdherenceSummary({ logs, medications = [] }: AdherenceSummaryProps) {
-  const stats = calculateAdherenceStats(medications, logs);
+  const stats = React.useMemo(
+    () => calculateAdherenceStats(medications, logs),
+    [medications, logs]
+  );
 
   return (
     <Card className="border-2 border-navy-100 shadow-md">
@@ -36,7 +39,7 @@ export function AdherenceSummary({ logs, medications = [] }: AdherenceSummaryPro
         {/* Progress bar */}
         <div>
           <div className="flex items-center justify-between text-sm font-bold text-navy-800 mb-1.5">
-            <span>Today's Completion</span>
+            <span>Today&apos;s Completion</span>
             <span>
               {stats.todayTaken} of {stats.todayTotal} doses taken
             </span>

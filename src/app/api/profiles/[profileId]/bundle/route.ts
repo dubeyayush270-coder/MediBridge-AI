@@ -51,16 +51,15 @@ export async function GET(
       return NextResponse.json({ error: "Care profile not found" }, { status: 404 });
     }
 
-    // Parallel fetch of medications, appointments, adherence, members
-    const [medications, appointments, adherenceLogs] = await Promise.all([
+    const db = getAdminDb()!;
+    // True parallel fetch of medications, appointments, adherence, and circle memberships
+    const [medications, appointments, adherenceLogs, membersSnap] = await Promise.all([
       adminFetchMedications(profileId),
       adminFetchAppointments(profileId),
       adminFetchAdherenceLogs(profileId),
+      db.collection("memberships").where("profileId", "==", profileId).get(),
     ]);
 
-    // Fetch members for this profile
-    const db = getAdminDb()!;
-    const membersSnap = await db.collection("memberships").where("profileId", "==", profileId).get();
     const members: CareProfileMembership[] = [];
     membersSnap.forEach((mSnap) => {
       const d = mSnap.data();

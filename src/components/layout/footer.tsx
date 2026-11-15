@@ -28,7 +28,7 @@ export function Footer() {
               </span>
             </div>
             <p className="text-navy-300 text-base max-w-md">
-              From Doctor's Advice to Everyday Care. An accessible, AI-powered healthcare companion connecting seniors, their families, and dedicated caregivers.
+              From Doctor&apos;s Advice to Everyday Care. An accessible, AI-powered healthcare companion connecting seniors, their families, and dedicated caregivers.
             </p>
             <div className="flex items-center gap-2 text-xs text-navy-400 pt-2">
               <Shield className="w-4 h-4 text-teal-400" />
