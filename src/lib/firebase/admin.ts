@@ -185,7 +185,14 @@ export function getAdminAuth(): admin.auth.Auth | null {
 
 export function getAdminDb(): admin.firestore.Firestore | null {
   const app = getAdminApp();
-  return app ? admin.firestore(app) : null;
+  if (!app) return null;
+  const db = admin.firestore(app);
+  try {
+    db.settings({ ignoreUndefinedProperties: true });
+  } catch {
+    // Firestore settings can only be set before any other Firestore operations
+  }
+  return db;
 }
 
 export const adminApp = getAdminApp();

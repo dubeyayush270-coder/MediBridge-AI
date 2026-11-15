@@ -54,6 +54,8 @@ declare module "lucide-react" {
   export const Send: any;
   export const RefreshCw: any;
   export const Settings2: any;
+  export const ListFilter: any;
+  export const CalendarCheck: any;
   const anyIcon: any;
   export default anyIcon;
 }

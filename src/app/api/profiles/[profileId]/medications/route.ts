@@ -74,9 +74,15 @@ export async function POST(
       );
     }
 
-    const body = await req.json();
-    if (!body.name || !body.name.trim()) {
+    const body = await req.json().catch(() => ({}));
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Invalid request payload" }, { status: 400 });
+    }
+    if (!body.name || typeof body.name !== "string" || !body.name.trim()) {
       return NextResponse.json({ error: "Medication name is required" }, { status: 400 });
+    }
+    if (!body.dosage || typeof body.dosage !== "string" || !body.dosage.trim()) {
+      return NextResponse.json({ error: "Prescribed dosage is required" }, { status: 400 });
     }
 
     const saved = await adminSaveMedication(profileId, body);

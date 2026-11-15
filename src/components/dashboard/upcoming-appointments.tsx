@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Appointment } from "@/lib/types/appointment";
 import { formatElderDate, formatElderTime } from "@/lib/utils";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -12,25 +12,53 @@ import {
   MapPin,
   Phone,
   UserCheck,
-  HelpCircle,
   AlertTriangle,
   Plus,
+  Pencil,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 
 interface UpcomingAppointmentsProps {
   appointments: Appointment[];
   onScheduleAppointment?: () => void;
+  onEditAppointment?: (apt: Appointment) => void;
+  onDeleteAppointment?: (aptId: string) => Promise<void> | void;
   canManageAppointments?: boolean;
 }
 
 export function UpcomingAppointments({
   appointments,
   onScheduleAppointment,
+  onEditAppointment,
+  onDeleteAppointment,
   canManageAppointments = false,
 }: UpcomingAppointmentsProps) {
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
   const upcomingList = appointments
     .filter((a) => a.status === "upcoming")
     .sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
+
+  const handleConfirmDelete = async (aptId: string, title: string) => {
+    if (!onDeleteAppointment) return;
+    try {
+      setDeletingId(aptId);
+      setDeleteError(null);
+      await onDeleteAppointment(aptId);
+      setConfirmDeleteId(null);
+      setToastMessage(`Cancelled consultation "${title}".`);
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch (err: any) {
+      setDeleteError(err.message || "Failed to cancel appointment. Please try again.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <Card className="border-2 border-navy-100 shadow-md">
@@ -67,6 +95,26 @@ export function UpcomingAppointments({
       </CardHeader>
 
       <CardContent className="pt-6">
+        {toastMessage && (
+          <div
+            role="status"
+            className="mb-4 p-4 bg-emerald-50 border-2 border-emerald-300 text-emerald-900 rounded-2xl flex items-center gap-3"
+          >
+            <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0" />
+            <p className="text-base font-bold">{toastMessage}</p>
+          </div>
+        )}
+
+        {deleteError && (
+          <div
+            role="alert"
+            className="mb-4 p-4 bg-red-50 border-2 border-red-300 text-red-900 rounded-2xl flex items-center gap-3"
+          >
+            <AlertCircle className="w-6 h-6 text-red-600 shrink-0" />
+            <p className="text-sm font-bold">{deleteError}</p>
+          </div>
+        )}
+
         {upcomingList.length === 0 ? (
           <div className="text-center py-12 px-4 bg-stone-50 rounded-2xl border-2 border-dashed border-stone-300">
             <div className="w-16 h-16 bg-stone-100 text-stone-400 rounded-3xl mx-auto flex items-center justify-center mb-3">
@@ -91,6 +139,9 @@ export function UpcomingAppointments({
           <div className="space-y-4">
             {upcomingList.map((apt) => {
               const aptDate = new Date(apt.dateTime);
+              const isDeletingThis = deletingId === apt.id;
+              const isConfirmingThis = confirmDeleteId === apt.id;
+
               return (
                 <div
                   key={apt.id}
@@ -116,10 +167,15 @@ export function UpcomingAppointments({
                         <p className="font-bold text-teal-800">
                           {apt.doctorName} • <span className="text-navy-600 font-medium">{apt.specialty}</span>
                         </p>
-                        <p className="flex items-center gap-1.5 text-navy-600 text-sm">
-                          <MapPin className="w-4 h-4 text-navy-400 shrink-0" />
-                          <span>{apt.clinicName} — {apt.address}</span>
-                        </p>
+                        {apt.clinicName && (
+                          <p className="flex items-center gap-1.5 text-navy-600 text-sm">
+                            <MapPin className="w-4 h-4 text-navy-400 shrink-0" />
+                            <span>
+                              {apt.clinicName}
+                              {apt.address ? ` — ${apt.address}` : ""}
+                            </span>
+                          </p>
+                        )}
                         {apt.phone && (
                           <p className="flex items-center gap-1.5 text-navy-600 text-sm">
                             <Phone className="w-4 h-4 text-navy-400 shrink-0" />
@@ -165,6 +221,64 @@ export function UpcomingAppointments({
                         )}
                       </div>
                     </div>
+
+                    {/* Edit & Delete Action Buttons (Phase 4 CRUD) */}
+                    {canManageAppointments && (
+                      <div className="flex md:flex-col items-center gap-2 shrink-0 self-end md:self-start pt-2 md:pt-0">
+                        {isConfirmingThis ? (
+                          <div className="p-3 bg-red-50 border-2 border-red-300 rounded-xl space-y-2 text-right">
+                            <p className="text-xs font-bold text-red-900">Cancel this appointment?</p>
+                            <div className="flex items-center gap-2 justify-end">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setConfirmDeleteId(null)}
+                                className="text-xs py-1 px-2 border-stone-300 text-stone-700 hover:bg-stone-100"
+                                disabled={isDeletingThis}
+                              >
+                                Keep
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleConfirmDelete(apt.id, apt.title)}
+                                className="text-xs py-1 px-2 bg-red-600 hover:bg-red-700 text-white font-bold border-red-700"
+                                isLoading={isDeletingThis}
+                              >
+                                Yes, Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            {onEditAppointment && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => onEditAppointment(apt)}
+                                className="border-teal-300 text-teal-800 hover:bg-teal-50 font-semibold flex items-center gap-1.5 px-3 py-1.5"
+                                aria-label={`Edit ${apt.title}`}
+                              >
+                                <Pencil className="w-3.5 h-3.5 text-teal-700" />
+                                <span>Edit</span>
+                              </Button>
+                            )}
+                            {onDeleteAppointment && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setConfirmDeleteId(apt.id)}
+                                className="border-stone-300 text-stone-600 hover:text-red-700 hover:border-red-300 hover:bg-red-50 font-semibold flex items-center gap-1.5 px-3 py-1.5"
+                                aria-label={`Cancel ${apt.title}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-stone-500 hover:text-red-600" />
+                                <span>Delete</span>
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );

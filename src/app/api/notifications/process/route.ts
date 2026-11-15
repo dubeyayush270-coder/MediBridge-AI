@@ -5,14 +5,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * POST /api/notifications/process
- * Protected scheduler processor endpoint.
+ * Shared handler for scheduler notification processing.
+ * Supports both GET (used by Vercel Cron) and POST (used by external schedulers).
  *
  * Authentication:
  * Requires Bearer token matching CRON_SECRET or NOTIFICATION_PROCESSOR_SECRET.
  * Rejects unauthenticated requests with 401 Unauthorized.
  */
-export async function POST(req: Request) {
+async function handleSchedulerInvocation(req: Request) {
   const cronSecret = (
     process.env.CRON_SECRET ||
     process.env.NOTIFICATION_PROCESSOR_SECRET ||
@@ -71,4 +71,20 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * GET /api/notifications/process
+ * Invoked by Vercel Scheduled Cron jobs.
+ */
+export async function GET(req: Request) {
+  return handleSchedulerInvocation(req);
+}
+
+/**
+ * POST /api/notifications/process
+ * Invoked by external cron schedulers and manual triggers.
+ */
+export async function POST(req: Request) {
+  return handleSchedulerInvocation(req);
 }

@@ -1,4 +1,5 @@
 import { getAdminDb } from "../firebase/admin";
+import { cleanFirestoreData } from "./firestore-clean";
 import { AppUser, UserRole } from "../types/user";
 import { CareProfile } from "../types/care-profile";
 import { CareProfileMembership, CaregiverPasscodeInvite, Permission } from "../types/membership";
@@ -100,13 +101,11 @@ export async function adminGetOrCreateUserDoc(
 
 export async function adminUpdateUserDoc(uid: string, updates: Partial<AppUser>): Promise<void> {
   const db = getDb();
-  await db
-    .collection("users")
-    .doc(uid)
-    .update({
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    });
+  const cleaned = cleanFirestoreData({
+    ...updates,
+    updatedAt: new Date().toISOString(),
+  });
+  await db.collection("users").doc(uid).update(cleaned);
 }
 
 /**
@@ -195,10 +194,10 @@ export async function adminCreateCareProfile(
   const profileId = `profile-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
   // 1. Create clean CareProfile WITHOUT passcode fields
-  const newProfile: CareProfile = {
+  const rawProfile: Record<string, any> = {
     id: profileId,
-    patientName: profileData.patientName || "New Patient",
-    preferredName: profileData.preferredName || profileData.patientName?.split(" ")[0] || "Patient",
+    patientName: profileData.patientName?.trim() || "New Patient",
+    preferredName: profileData.preferredName?.trim() || profileData.patientName?.split(" ")[0] || "Patient",
     dateOfBirth: profileData.dateOfBirth || "1955-01-01",
     gender: profileData.gender || "Not specified",
     bloodType: profileData.bloodType || "Unknown",
@@ -215,6 +214,11 @@ export async function adminCreateCareProfile(
     updatedAt: new Date().toISOString(),
   };
 
+  if (profileData.notificationSettings !== undefined) {
+    rawProfile.notificationSettings = profileData.notificationSettings;
+  }
+
+  const newProfile = cleanFirestoreData(rawProfile) as CareProfile;
   await db.collection("careProfiles").doc(profileId).set(newProfile);
 
   // 2. Create membership for the creator (with full owner permissions on their created profile)
@@ -605,32 +609,64 @@ export async function adminFetchMedications(profileId: string): Promise<Medicati
   return list;
 }
 
+export async function adminGetMedication(
+  profileId: string,
+  medicationId: string
+): Promise<Medication | null> {
+  const db = getDb();
+  const snap = await db.collection("medications").doc(medicationId).get();
+  if (!snap.exists) return null;
+  const d = snap.data()!;
+  if (d.profileId !== profileId) return null;
+  return {
+    id: snap.id,
+    profileId: d.profileId,
+    name: d.name,
+    genericName: d.genericName,
+    dosage: d.dosage,
+    route: d.route,
+    frequency: d.frequency || "daily",
+    scheduleTimes: d.scheduleTimes || [{ time: "08:00", label: "morning" }],
+    withFood: Boolean(d.withFood),
+    specialInstructions: d.specialInstructions,
+    prescribingDoctor: d.prescribingDoctor,
+    prescribedFor: d.prescribedFor,
+    status: d.status || "active",
+    refillReminder: d.refillReminder || { enabled: false },
+    pillVisual: d.pillVisual,
+    createdAt: d.createdAt || new Date().toISOString(),
+    updatedAt: d.updatedAt || new Date().toISOString(),
+  };
+}
+
 export async function adminSaveMedication(
   profileId: string,
   data: Partial<Medication>
 ): Promise<Medication> {
   const db = getDb();
   const medId = data.id || `med-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const med: Medication = {
+  const rawMed: Record<string, any> = {
     id: medId,
     profileId,
-    name: data.name || "Medication",
-    genericName: data.genericName,
-    dosage: data.dosage || "As prescribed",
-    route: data.route,
+    name: data.name?.trim() || "Medication",
+    dosage: data.dosage?.trim() || "As prescribed",
     frequency: data.frequency || "daily",
     scheduleTimes: data.scheduleTimes || [{ time: "08:00", label: "morning" }],
     withFood: Boolean(data.withFood),
-    specialInstructions: data.specialInstructions,
-    prescribingDoctor: data.prescribingDoctor,
-    prescribedFor: data.prescribedFor,
     status: data.status || "active",
     refillReminder: data.refillReminder || { enabled: false },
-    pillVisual: data.pillVisual,
     createdAt: data.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
 
+  if (data.genericName !== undefined) rawMed.genericName = data.genericName;
+  if (data.route !== undefined) rawMed.route = data.route;
+  if (data.specialInstructions !== undefined) rawMed.specialInstructions = data.specialInstructions;
+  if (data.prescribingDoctor !== undefined) rawMed.prescribingDoctor = data.prescribingDoctor;
+  if (data.prescribedFor !== undefined) rawMed.prescribedFor = data.prescribedFor;
+  if (data.pillVisual !== undefined) rawMed.pillVisual = data.pillVisual;
+
+  const med = cleanFirestoreData(rawMed) as Medication;
   await db.collection("medications").doc(medId).set(med, { merge: true });
   return med;
 }
@@ -676,34 +712,68 @@ export async function adminFetchAppointments(profileId: string): Promise<Appoint
   return list;
 }
 
+export async function adminGetAppointment(
+  profileId: string,
+  appointmentId: string
+): Promise<Appointment | null> {
+  const db = getDb();
+  const snap = await db.collection("appointments").doc(appointmentId).get();
+  if (!snap.exists) return null;
+  const d = snap.data()!;
+  if (d.profileId !== profileId) return null;
+  return {
+    id: snap.id,
+    profileId: d.profileId,
+    title: d.title,
+    doctorName: d.doctorName,
+    specialty: d.specialty,
+    clinicName: d.clinicName,
+    address: d.address,
+    phone: d.phone,
+    dateTime: d.dateTime,
+    durationMinutes: d.durationMinutes || 30,
+    status: d.status || "upcoming",
+    purpose: d.purpose || "Consultation",
+    questionsToAsk: d.questionsToAsk || [],
+    preparationNotes: d.preparationNotes,
+    transportAssistanceNeeded: Boolean(d.transportAssistanceNeeded),
+    assignedCompanion: d.assignedCompanion,
+    reminderSent: Boolean(d.reminderSent),
+    createdAt: d.createdAt || new Date().toISOString(),
+    updatedAt: d.updatedAt || new Date().toISOString(),
+  };
+}
+
 export async function adminSaveAppointment(
   profileId: string,
   data: Partial<Appointment>
 ): Promise<Appointment> {
   const db = getDb();
   const aptId = data.id || `apt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const apt: Appointment = {
+  const rawApt: Record<string, any> = {
     id: aptId,
     profileId,
-    title: data.title || "Doctor Consultation",
-    doctorName: data.doctorName || "Physician",
-    specialty: data.specialty || "General Practice",
-    clinicName: data.clinicName || "Medical Center",
-    address: data.address || "",
-    phone: data.phone || "",
+    title: data.title?.trim() || "Doctor Consultation",
+    doctorName: data.doctorName?.trim() || "Physician",
+    specialty: data.specialty?.trim() || "General Practice",
+    clinicName: data.clinicName?.trim() || "Medical Center",
+    address: data.address?.trim() || "",
+    phone: data.phone?.trim() || "",
     dateTime: data.dateTime || new Date().toISOString(),
-    durationMinutes: data.durationMinutes || 30,
+    durationMinutes: Number(data.durationMinutes) || 30,
     status: data.status || "upcoming",
-    purpose: data.purpose || "Regular checkup",
-    questionsToAsk: data.questionsToAsk || [],
-    preparationNotes: data.preparationNotes,
+    purpose: data.purpose?.trim() || "Regular checkup",
+    questionsToAsk: Array.isArray(data.questionsToAsk) ? data.questionsToAsk : [],
     transportAssistanceNeeded: Boolean(data.transportAssistanceNeeded),
-    assignedCompanion: data.assignedCompanion,
     reminderSent: Boolean(data.reminderSent),
     createdAt: data.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
 
+  if (data.preparationNotes !== undefined) rawApt.preparationNotes = data.preparationNotes;
+  if (data.assignedCompanion !== undefined) rawApt.assignedCompanion = data.assignedCompanion;
+
+  const apt = cleanFirestoreData(rawApt) as Appointment;
   await db.collection("appointments").doc(aptId).set(apt, { merge: true });
   return apt;
 }
@@ -773,7 +843,7 @@ export async function adminLogAdherenceDose(
 
   const targetDocId = !existingSnap.empty ? existingSnap.docs[0].id : deterministicId;
 
-  const log: MedicationAdherenceLog = {
+  const rawLog: Record<string, any> = {
     id: targetDocId,
     profileId,
     medicationId: logData.medicationId,
@@ -788,9 +858,11 @@ export async function adminLogAdherenceDose(
       userName: user.displayName,
       role: user.role,
     },
-    notes: logData.notes,
   };
 
+  if (logData.notes !== undefined) rawLog.notes = logData.notes;
+
+  const log = cleanFirestoreData(rawLog) as MedicationAdherenceLog;
   await db.collection("adherenceLogs").doc(targetDocId).set(log, { merge: true });
   return log;
 }

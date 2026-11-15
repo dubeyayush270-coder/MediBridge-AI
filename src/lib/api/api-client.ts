@@ -195,6 +195,22 @@ export async function apiSaveMedication(
   );
 }
 
+export async function apiUpdateMedication(
+  token: string,
+  profileId: string,
+  medicationId: string,
+  data: Partial<Medication>
+): Promise<{ success: boolean; medication: Medication }> {
+  return request<{ success: boolean; medication: Medication }>(
+    `/api/profiles/${encodeURIComponent(profileId)}/medications/${encodeURIComponent(medicationId)}`,
+    token,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
 export async function apiDeleteMedication(
   token: string,
   profileId: string,
@@ -219,6 +235,22 @@ export async function apiSaveAppointment(
     token,
     {
       method: "POST",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function apiUpdateAppointment(
+  token: string,
+  profileId: string,
+  appointmentId: string,
+  data: Partial<Appointment>
+): Promise<{ success: boolean; appointment: Appointment }> {
+  return request<{ success: boolean; appointment: Appointment }>(
+    `/api/profiles/${encodeURIComponent(profileId)}/appointments/${encodeURIComponent(appointmentId)}`,
+    token,
+    {
+      method: "PATCH",
       body: JSON.stringify(data),
     }
   );

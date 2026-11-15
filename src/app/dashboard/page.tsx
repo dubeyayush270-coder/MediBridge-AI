@@ -13,6 +13,8 @@ import { CreateProfileModal } from "@/components/dashboard/create-profile-modal"
 import { PasscodeModal } from "@/components/dashboard/passcode-modal";
 import { MedicationModal } from "@/components/dashboard/medication-modal";
 import { AppointmentModal } from "@/components/dashboard/appointment-modal";
+import { Medication } from "@/lib/types/medication";
+import { Appointment } from "@/lib/types/appointment";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Heart, Plus, Key, Sparkles, UserPlus } from "lucide-react";
@@ -33,13 +35,19 @@ export default function DashboardPage() {
     joinProfileWithPasscode,
     logMedicationDose,
     addMedication,
+    updateMedication,
+    deleteMedication,
     addAppointment,
+    updateAppointment,
+    deleteAppointment,
   } = useAuth();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [passcodeModalOpen, setPasscodeModalOpen] = useState(false);
   const [medicationModalOpen, setMedicationModalOpen] = useState(false);
   const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
+  const [editingMedication, setEditingMedication] = useState<Medication | null>(null);
+  const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
 
   // Check RBAC permissions for active profile
   const currentMembership = memberships.find(
@@ -150,19 +158,39 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left 2 Columns: Primary Daily Healthcare Actions */}
         <div className="lg:col-span-2 space-y-8">
-          {/* Today's Medications */}
+          {/* Today's Medications & Prescribed Regimens (Phase 3 CRUD) */}
           <TodayMedications
             medications={medications}
             adherenceLogs={adherenceLogs}
             onLogDose={logMedicationDose}
-            onAddMedication={() => setMedicationModalOpen(true)}
+            onAddMedication={() => {
+              setEditingMedication(null);
+              setMedicationModalOpen(true);
+            }}
+            onEditMedication={(med) => {
+              setEditingMedication(med);
+              setMedicationModalOpen(true);
+            }}
+            onDeleteMedication={async (medId) => {
+              await deleteMedication(medId);
+            }}
             canManageMedications={canManageMedications}
           />
 
-          {/* Upcoming Appointments */}
+          {/* Upcoming Appointments (Phase 4 CRUD) */}
           <UpcomingAppointments
             appointments={appointments}
-            onScheduleAppointment={() => setAppointmentModalOpen(true)}
+            onScheduleAppointment={() => {
+              setEditingAppointment(null);
+              setAppointmentModalOpen(true);
+            }}
+            onEditAppointment={(apt) => {
+              setEditingAppointment(apt);
+              setAppointmentModalOpen(true);
+            }}
+            onDeleteAppointment={async (aptId) => {
+              await deleteAppointment(aptId);
+            }}
             canManageAppointments={canManageAppointments}
           />
         </div>
@@ -183,8 +211,22 @@ export default function DashboardPage() {
           <QuickActions
             activeProfile={activeProfile}
             onOpenCreateProfile={() => setCreateModalOpen(true)}
-            onOpenAddMedication={canManageMedications ? () => setMedicationModalOpen(true) : undefined}
-            onOpenAddAppointment={canManageAppointments ? () => setAppointmentModalOpen(true) : undefined}
+            onOpenAddMedication={
+              canManageMedications
+                ? () => {
+                    setEditingMedication(null);
+                    setMedicationModalOpen(true);
+                  }
+                : undefined
+            }
+            onOpenAddAppointment={
+              canManageAppointments
+                ? () => {
+                    setEditingAppointment(null);
+                    setAppointmentModalOpen(true);
+                  }
+                : undefined
+            }
           />
         </div>
       </div>
@@ -207,21 +249,37 @@ export default function DashboardPage() {
         onJoinWithPasscode={joinProfileWithPasscode}
       />
 
-      {/* Add Medication Modal */}
+      {/* Add / Edit Medication Modal */}
       <MedicationModal
         isOpen={medicationModalOpen}
-        onClose={() => setMedicationModalOpen(false)}
+        onClose={() => {
+          setMedicationModalOpen(false);
+          setEditingMedication(null);
+        }}
+        initialData={editingMedication}
         onSave={async (data) => {
-          await addMedication(data);
+          if (editingMedication?.id) {
+            await updateMedication(editingMedication.id, data);
+          } else {
+            await addMedication(data);
+          }
         }}
       />
 
-      {/* Schedule Consultation Modal */}
+      {/* Schedule / Edit Consultation Modal */}
       <AppointmentModal
         isOpen={appointmentModalOpen}
-        onClose={() => setAppointmentModalOpen(false)}
+        onClose={() => {
+          setAppointmentModalOpen(false);
+          setEditingAppointment(null);
+        }}
+        initialData={editingAppointment}
         onSave={async (data) => {
-          await addAppointment(data);
+          if (editingAppointment?.id) {
+            await updateAppointment(editingAppointment.id, data);
+          } else {
+            await addAppointment(data);
+          }
         }}
       />
     </div>

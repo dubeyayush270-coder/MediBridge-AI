@@ -34,8 +34,10 @@ import {
   apiJoinProfile,
   apiLogAdherenceDose,
   apiSaveMedication,
+  apiUpdateMedication,
   apiDeleteMedication,
   apiSaveAppointment,
+  apiUpdateAppointment,
   apiDeleteAppointment,
   ApiError,
 } from "../api/api-client";
@@ -639,7 +641,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const updateMedication = async (id: string, data: Partial<Medication>): Promise<Medication> => {
     if (!isDemoMode && isFirebaseReady && firebaseUser && activeProfile) {
       const token = await firebaseUser.getIdToken();
-      const res = await apiSaveMedication(token, activeProfile.id, { ...data, id });
+      const res = await apiUpdateMedication(token, activeProfile.id, id, data);
       setMedications((prev) => prev.map((m) => (m.id === id ? res.medication : m)));
       return res.medication;
     } else {
@@ -709,7 +711,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const updateAppointment = async (id: string, data: Partial<Appointment>): Promise<Appointment> => {
     if (!isDemoMode && isFirebaseReady && firebaseUser && activeProfile) {
       const token = await firebaseUser.getIdToken();
-      const res = await apiSaveAppointment(token, activeProfile.id, { ...data, id });
+      const res = await apiUpdateAppointment(token, activeProfile.id, id, data);
       setAppointments((prev) => prev.map((a) => (a.id === id ? res.appointment : a)));
       return res.appointment;
     } else {

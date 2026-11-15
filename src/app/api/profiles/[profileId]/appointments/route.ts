@@ -74,9 +74,18 @@ export async function POST(
       );
     }
 
-    const body = await req.json();
-    if (!body.title || !body.title.trim()) {
+    const body = await req.json().catch(() => ({}));
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Invalid request payload" }, { status: 400 });
+    }
+    if (!body.title || typeof body.title !== "string" || !body.title.trim()) {
       return NextResponse.json({ error: "Appointment title is required" }, { status: 400 });
+    }
+    if (!body.doctorName || typeof body.doctorName !== "string" || !body.doctorName.trim()) {
+      return NextResponse.json({ error: "Doctor name is required" }, { status: 400 });
+    }
+    if (!body.dateTime || isNaN(new Date(body.dateTime).getTime())) {
+      return NextResponse.json({ error: "Valid appointment date and time is required" }, { status: 400 });
     }
 
     const saved = await adminSaveAppointment(profileId, body);
