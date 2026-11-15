@@ -1,16 +1,24 @@
 import * as admin from "firebase-admin";
+import * as fs from "fs";
 
 let cachedApp: admin.app.App | null = null;
 
 /**
  * Checks whether valid server credentials exist for the Firebase Admin SDK.
- * Returns true if explicit service account credentials or cloud runtime (Cloud Run ADC) are present.
+ * Returns true if explicit service account credentials, GOOGLE_APPLICATION_CREDENTIALS,
+ * or cloud runtime (Cloud Run ADC) are present.
  */
 export function isFirebaseAdminCredentialConfigured(): boolean {
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
-  if (clientEmail && privateKey) return true;
-  if (process.env.K_SERVICE || process.env.GOOGLE_APPLICATION_CREDENTIALS) return true;
+  if (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) return true;
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    try {
+      if (fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS)) return true;
+    } catch {
+      // If fs check blocked by sandbox or error, return true if env var is set
+      return true;
+    }
+  }
+  if (process.env.K_SERVICE) return true;
   return false;
 }
 
@@ -26,12 +34,32 @@ export function getAdminApp(): admin.app.App | null {
 
   const projectId =
     process.env.FIREBASE_PROJECT_ID ||
+    process.env.GOOGLE_CLOUD_PROJECT ||
     process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
     "medibridge-ai-4f126";
+
+  // 1. Check GOOGLE_APPLICATION_CREDENTIALS file path
+  const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (credPath) {
+    try {
+      if (fs.existsSync(credPath)) {
+        const saContent = fs.readFileSync(credPath, "utf8");
+        const sa = JSON.parse(saContent);
+        cachedApp = admin.initializeApp({
+          credential: admin.credential.cert(sa),
+          projectId: sa.project_id || projectId,
+        });
+        return cachedApp;
+      }
+    } catch (err) {
+      console.warn("[Firebase Admin] Could not load GOOGLE_APPLICATION_CREDENTIALS file directly:", err);
+    }
+  }
+
+  // 2. Explicit Service Account Credentials (preferred for local development & CI)
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
 
-  // 1. Explicit Service Account Credentials (preferred for local development & CI)
   if (clientEmail && privateKey) {
     try {
       cachedApp = admin.initializeApp({
@@ -48,8 +76,8 @@ export function getAdminApp(): admin.app.App | null {
     }
   }
 
-  // 2. Google Cloud Run / Google Cloud environment (Application Default Credentials)
-  if (process.env.K_SERVICE || process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+  // 3. Google Cloud Run / Google Cloud environment (Application Default Credentials)
+  if (process.env.K_SERVICE) {
     try {
       cachedApp = admin.initializeApp({
         projectId,
@@ -60,9 +88,6 @@ export function getAdminApp(): admin.app.App | null {
     }
   }
 
-  // 3. In local development without service account or ADC, do NOT invoke
-  // admin.credential.applicationDefault() because it attempts to reach metadata.google.internal
-  // and throws ENOTFOUND. Return null so callers can handle 503 BACKEND_CREDENTIALS_MISSING cleanly.
   return null;
 }
 
