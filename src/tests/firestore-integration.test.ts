@@ -5,7 +5,7 @@ import { CareProfileMembership } from "../lib/types/membership";
 import { ROLE_PERMISSIONS, hasPermission } from "../lib/auth/rbac";
 import { hashPasscode, generateSalt, verifyPasscode } from "../lib/auth/passcode";
 import { DEMO_USER, DEMO_PROFILE } from "../lib/firebase/demo-data";
-import { normalizePrivateKey } from "../lib/firebase/admin";
+import { normalizePrivateKey, resolveAdminProjectId, EXPECTED_FIREBASE_PROJECT_ID } from "../lib/firebase/admin";
 
 describe("Firestore Care Profile & Membership Integration", () => {
   const testUserA: AppUser = {
@@ -265,6 +265,45 @@ describe("Firestore Care Profile & Membership Integration", () => {
     it("preserves already-multiline PEM keys", () => {
       const multiline = "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgk...\n-----END PRIVATE KEY-----";
       expect(normalizePrivateKey(multiline)).toBe(multiline);
+    });
+  });
+
+  describe("Firebase Admin Project ID Resolution & Regression Tests", () => {
+    it("trims leading tab character (regression for: '\\tmedibridge-ai-4f126')", () => {
+      const resolved = resolveAdminProjectId("\tmedibridge-ai-4f126");
+      expect(resolved).toBe("medibridge-ai-4f126");
+      expect(resolved.startsWith("\t")).toBe(false);
+      expect(resolved).toBe(EXPECTED_FIREBASE_PROJECT_ID);
+    });
+
+    it("trims leading and trailing spaces and newlines", () => {
+      const resolved = resolveAdminProjectId("  medibridge-ai-4f126\n  ");
+      expect(resolved).toBe("medibridge-ai-4f126");
+    });
+
+    it("strips wrapping double and single quotes containing whitespace", () => {
+      expect(resolveAdminProjectId('"\tmedibridge-ai-4f126"')).toBe("medibridge-ai-4f126");
+      expect(resolveAdminProjectId("'\tmedibridge-ai-4f126\t'")).toBe("medibridge-ai-4f126");
+    });
+
+    it("falls back to medibridge-ai-4f126 when raw input is undefined", () => {
+      const resolved = resolveAdminProjectId(undefined);
+      expect(resolved).toBe("medibridge-ai-4f126");
+    });
+
+    it("throws a clear error when project ID is empty or whitespace-only", () => {
+      expect(() => resolveAdminProjectId("   ")).toThrow(
+        /Firebase Admin Configuration Error: Project ID is empty or whitespace-only/
+      );
+      expect(() => resolveAdminProjectId("\t\n")).toThrow(
+        /Firebase Admin Configuration Error: Project ID is empty or whitespace-only/
+      );
+    });
+
+    it("throws a clear error when project ID contains invalid characters", () => {
+      expect(() => resolveAdminProjectId("Invalid_Project_ID!")).toThrow(
+        /Firebase Admin Configuration Error: Project ID "Invalid_Project_ID!" is malformed/
+      );
     });
   });
 });
