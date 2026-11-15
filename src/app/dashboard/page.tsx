@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { GreetingHeader } from "@/components/dashboard/greeting-header";
+import { CareCopilot } from "@/components/dashboard/care-copilot";
 import { TodayMedications } from "@/components/dashboard/today-medications";
 import { UpcomingAppointments } from "@/components/dashboard/upcoming-appointments";
 import { AdherenceSummary } from "@/components/dashboard/adherence-summary";
@@ -154,51 +155,66 @@ export default function DashboardPage() {
         </Card>
       )}
 
+      {/* MediBridge Care Copilot Daily Briefing */}
+      <CareCopilot
+        medications={medications}
+        adherenceLogs={adherenceLogs}
+        appointments={appointments}
+        patientName={activeProfile?.preferredName || activeProfile?.patientName || user?.displayName || "Patient"}
+        role={user?.role}
+      />
+
       {/* Main Grid Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left 2 Columns: Primary Daily Healthcare Actions */}
         <div className="lg:col-span-2 space-y-8">
           {/* Today's Medications & Prescribed Regimens (Phase 3 CRUD) */}
-          <TodayMedications
-            medications={medications}
-            adherenceLogs={adherenceLogs}
-            onLogDose={logMedicationDose}
-            onAddMedication={() => {
-              setEditingMedication(null);
-              setMedicationModalOpen(true);
-            }}
-            onEditMedication={(med) => {
-              setEditingMedication(med);
-              setMedicationModalOpen(true);
-            }}
-            onDeleteMedication={async (medId) => {
-              await deleteMedication(medId);
-            }}
-            canManageMedications={canManageMedications}
-          />
+          <div id="today-medications-section">
+            <TodayMedications
+              medications={medications}
+              adherenceLogs={adherenceLogs}
+              onLogDose={logMedicationDose}
+              onAddMedication={() => {
+                setEditingMedication(null);
+                setMedicationModalOpen(true);
+              }}
+              onEditMedication={(med) => {
+                setEditingMedication(med);
+                setMedicationModalOpen(true);
+              }}
+              onDeleteMedication={async (medId) => {
+                await deleteMedication(medId);
+              }}
+              canManageMedications={canManageMedications}
+            />
+          </div>
 
           {/* Upcoming Appointments (Phase 4 CRUD) */}
-          <UpcomingAppointments
-            appointments={appointments}
-            onScheduleAppointment={() => {
-              setEditingAppointment(null);
-              setAppointmentModalOpen(true);
-            }}
-            onEditAppointment={(apt) => {
-              setEditingAppointment(apt);
-              setAppointmentModalOpen(true);
-            }}
-            onDeleteAppointment={async (aptId) => {
-              await deleteAppointment(aptId);
-            }}
-            canManageAppointments={canManageAppointments}
-          />
+          <div id="upcoming-appointments-section">
+            <UpcomingAppointments
+              appointments={appointments}
+              onScheduleAppointment={() => {
+                setEditingAppointment(null);
+                setAppointmentModalOpen(true);
+              }}
+              onEditAppointment={(apt) => {
+                setEditingAppointment(apt);
+                setAppointmentModalOpen(true);
+              }}
+              onDeleteAppointment={async (aptId) => {
+                await deleteAppointment(aptId);
+              }}
+              canManageAppointments={canManageAppointments}
+            />
+          </div>
         </div>
 
         {/* Right 1 Column: Adherence, Caregivers, and Quick Actions */}
         <div className="space-y-8">
           {/* Medication Adherence Summary */}
-          <AdherenceSummary logs={adherenceLogs} medications={medications} />
+          <div id="adherence-summary-section">
+            <AdherenceSummary logs={adherenceLogs} medications={medications} />
+          </div>
 
           {/* Caregiver & Family Team */}
           <CaregiverTeam

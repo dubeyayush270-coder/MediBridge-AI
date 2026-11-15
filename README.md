@@ -8,7 +8,7 @@
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-navy?style=for-the-badge&logo=github)](https://github.com/dubeyayush270-coder/MediBridge-AI)
 [![Single Branch](https://img.shields.io/badge/Branch-main%20only-brightgreen?style=for-the-badge&logo=git)](https://github.com/dubeyayush270-coder/MediBridge-AI)
 [![Repo Size](https://img.shields.io/badge/Repo%20Size-0.26%20MB%20%28%3C10MB%29-blue?style=for-the-badge)](https://github.com/dubeyayush270-coder/MediBridge-AI)
-[![Tests Passing](https://img.shields.io/badge/Vitest-128%20Passed-brightgreen?style=for-the-badge&logo=vitest)](https://github.com/dubeyayush270-coder/MediBridge-AI)
+[![Tests Passing](https://img.shields.io/badge/Vitest-138%20Passed-brightgreen?style=for-the-badge&logo=vitest)](https://github.com/dubeyayush270-coder/MediBridge-AI)
 [![TypeScript](https://img.shields.io/badge/TypeScript-100%25%20Strict-blue?style=for-the-badge&logo=typescript)](https://github.com/dubeyayush270-coder/MediBridge-AI)
 
 ---
@@ -63,8 +63,15 @@ A core requirement for Catalyst 2026 is demonstrating a **smart, dynamic assista
    - **Timezone Drift Protection**: Normalizes wall-clock hours to UTC using timezone-aware calculations (`scheduler-evaluator.ts`) to avoid errors across daylight saving or regional offsets.
 5. **Contextual Appointment Escort Guidance**:
    - Intelligently detects whether transportation assistance is requested (`🚗 Transport Assistance Requested`), checks whether a family companion is assigned, and highlights pre-consultation preparation notes and questions for the physician.
-6. **Safety & Zero-Hallucination Guardrails**:
-   - The assistant operates deterministically on verified patient and prescription data. It **never hallucinates dosages, invents medical diagnoses, or alters prescribed regimens**.
+6. **MediBridge Care Copilot (Live Contextual Decision Engine)**:
+   - A dedicated, real-time clinical care briefing situated prominently on the dashboard. It dynamically synthesizes the active patient's schedule and adherence logs through a **5-tier deterministic prioritization hierarchy**:
+     - **Priority 1 (Action Needed — Critical)**: Identifies missed or overdue doses (>30m grace). Displays supportive check-in messaging without prescriptive dosing alterations, strictly instructing patients never to double up on missed doses.
+     - **Priority 2 (Upcoming Dose — Warning)**: Surfaces the next approaching dose with verified saved meal instructions (*"Take with food"*), special physician instructions, and dosage strength.
+     - **Priority 3 (Upcoming Consultation — Info)**: Detects doctor visits within 24 hours, surfacing doctor specialty, address, saved preparation instructions (*"Fasting required 6 hours prior"*), and transport escort status.
+     - **Priority 4 (All Doses Taken — Success)**: Celebrates 100% daily adherence completion, reinforcing consistency and peace of mind.
+     - **Priority 5 (Care Routine Active — Neutral)**: Provides a reassuring summary when all routines are on track or when setting up a new profile.
+7. **Safety & Zero-Hallucination Guardrails**:
+   - The assistant operates deterministically on verified patient and prescription data. It **never hallucinates dosages, invents medical diagnoses, alters prescribed regimens, or calls external black-box LLMs that could give dangerous clinical advice**.
 
 ---
 
@@ -72,7 +79,13 @@ A core requirement for Catalyst 2026 is demonstrating a **smart, dynamic assista
 
 Every feature listed below is fully implemented and tested in the codebase:
 
-### 1. Account & Authentication Security
+### 1. MediBridge Care Copilot (Live Daily Briefing Assistant)
+- **Real-Time Context Synthesis**: Evaluates the active patient's medication logs, schedule slots, and appointments reactively upon any state change.
+- **Accessible Multi-Action Navigation**: 1-tap accessible action buttons (large 44px+ touch targets) to jump directly to medications, appointments, or adherence analytics.
+- **Visual Adherence Meter**: Live visual progress bar and tally showing taken, skipped, missed, and pending doses for the day.
+- **Screen Reader & Keyboard Accessibility**: Built with `role="region"`, `aria-label`, high-contrast elder styling, and zero distracting animations.
+
+### 2. Account & Authentication Security
 - **Email & Password Authentication**: Full user registration, login, and session persistence using Firebase Authentication.
 - **Protected Server-Side User Profiles**: User documents and roles are managed server-side via Firebase Admin SDK with automatic token verification (`verifyIdToken`).
 - **Instant Demo Evaluation Mode**: Automatic fallback for evaluators to test all features with fictional data if Firebase credentials are not configured locally.
