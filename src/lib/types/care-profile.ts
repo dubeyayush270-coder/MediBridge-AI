@@ -1,3 +1,5 @@
+import { NotificationPreferences } from "./notification";
+
 export interface EmergencyContact {
   name: string;
   relationship: string;
@@ -21,6 +23,7 @@ export interface CareProfile {
   };
   emergencyContacts: EmergencyContact[];
   createdBy: string; // User UID
+  notificationSettings?: NotificationPreferences;
   createdAt: string;
   updatedAt: string;
 }

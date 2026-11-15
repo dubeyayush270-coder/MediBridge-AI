@@ -158,6 +158,7 @@ export async function adminGetCareProfile(profileId: string): Promise<CareProfil
     },
     emergencyContacts: d.emergencyContacts || [],
     createdBy: d.createdBy,
+    notificationSettings: d.notificationSettings,
     createdAt: d.createdAt || new Date().toISOString(),
     updatedAt: d.updatedAt || new Date().toISOString(),
   };

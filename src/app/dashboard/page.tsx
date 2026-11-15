@@ -8,6 +8,7 @@ import { UpcomingAppointments } from "@/components/dashboard/upcoming-appointmen
 import { AdherenceSummary } from "@/components/dashboard/adherence-summary";
 import { CaregiverTeam } from "@/components/dashboard/caregiver-team";
 import { QuickActions } from "@/components/dashboard/quick-actions";
+import { NotificationsPanel } from "@/components/dashboard/notifications-panel";
 import { CreateProfileModal } from "@/components/dashboard/create-profile-modal";
 import { PasscodeModal } from "@/components/dashboard/passcode-modal";
 import { MedicationModal } from "@/components/dashboard/medication-modal";
@@ -187,6 +188,9 @@ export default function DashboardPage() {
           />
         </div>
       </div>
+
+      {/* Notifications, Reminders & Email Alerts Panel */}
+      <NotificationsPanel profileId={activeProfile?.id || ""} />
 
       {/* Create Care Profile Modal */}
       <CreateProfileModal

@@ -1,3 +1,5 @@
+import { NotificationPreferences } from "./notification";
+
 export type UserRole = "elderly_patient" | "family_member" | "caregiver";
 
 export interface AppUser {
@@ -16,5 +18,6 @@ export interface AppUser {
     audioAssistance: boolean;
     emailAlerts: boolean;
     smsAlerts: boolean;
+    notifications?: NotificationPreferences;
   };
 }

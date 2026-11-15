@@ -50,6 +50,10 @@ declare module "lucide-react" {
   export const Trash2: any;
   export const Edit2: any;
   export const Flame: any;
+  export const Bell: any;
+  export const Send: any;
+  export const RefreshCw: any;
+  export const Settings2: any;
   const anyIcon: any;
   export default anyIcon;
 }
