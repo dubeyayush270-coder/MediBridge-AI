@@ -18,7 +18,8 @@ export function isFirebaseAdminCredentialConfigured(): boolean {
       return true;
     }
   }
-  if (process.env.K_SERVICE) return true;
+  // Cloud Run or Google Cloud environments automatically provide Application Default Credentials (ADC)
+  if (process.env.K_SERVICE || process.env.GOOGLE_CLOUD_PROJECT || process.env.GAE_SERVICE) return true;
   return false;
 }
 
@@ -77,14 +78,22 @@ export function getAdminApp(): admin.app.App | null {
   }
 
   // 3. Google Cloud Run / Google Cloud environment (Application Default Credentials)
-  if (process.env.K_SERVICE) {
+  if (process.env.K_SERVICE || process.env.GOOGLE_CLOUD_PROJECT || process.env.NODE_ENV === "production") {
     try {
       cachedApp = admin.initializeApp({
+        credential: admin.credential.applicationDefault(),
         projectId,
       });
       return cachedApp;
-    } catch (err) {
-      console.warn("[Firebase Admin] Failed to initialize with Cloud Run ADC:", err);
+    } catch (adcErr) {
+      try {
+        cachedApp = admin.initializeApp({
+          projectId,
+        });
+        return cachedApp;
+      } catch (err) {
+        console.warn("[Firebase Admin] Failed to initialize with Cloud Run ADC:", err);
+      }
     }
   }
 
